@@ -18,10 +18,10 @@ on:
         required: false
         type: string
       browsers:
-        description: 'Comma-separated browser engines to run'
+        description: 'Comma-separated browser engines to run (Opera is unreliable on GitHub-hosted runners — see below)'
         required: false
         type: string
-        default: 'chrome,firefox,opera'
+        default: 'chrome,firefox'
       limit:
         description: 'Only process the first N sites (leave blank for all)'
         required: false
@@ -62,12 +62,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y /tmp/chrome.deb
 
-      - name: Install Opera
-        run: |
-          wget -qO- https://deb.opera.com/archive.key | gpg --dearmor | sudo tee /usr/share/keyrings/opera-archive-keyring.gpg > /dev/null
-          echo "deb [signed-by=/usr/share/keyrings/opera-archive-keyring.gpg] https://deb.opera.com/opera-stable/ stable non-free" | sudo tee /etc/apt/sources.list.d/opera-stable.list
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends opera-stable
+      # Opera is deliberately NOT installed here: confirmed in production runs
+      # on this exact runner to fail every launch with "Opera never opened
+      # its DevTools port in time" (same failure mode already documented for
+      # Docker Desktop/WSL2 in the Dockerfile and src/browsers.js) — Chrome
+      # and Firefox are the two verified reliable engines in this headless
+      # Linux environment. Pass browsers: chrome,firefox,opera on a manual
+      # dispatch if you want to try it anyway, but expect it to fail.
 
       - name: Run the automation (headless)
         env:
@@ -82,8 +83,12 @@ jobs:
           # secret unset just skips the email; it doesn't fail the run.
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         run: |
-          ARGS="--headless"
-          if [ -n "${{ inputs.browsers }}" ]; then ARGS="$ARGS --only=${{ inputs.browsers }}"; fi
+          # inputs.browsers only exists on a manual (workflow_dispatch) run —
+          # it's empty on the schedule trigger, so default to chrome,firefox
+          # there too (see the comment above the removed Opera install step).
+          BROWSERS="${{ inputs.browsers }}"
+          if [ -z "$BROWSERS" ]; then BROWSERS="chrome,firefox"; fi
+          ARGS="--headless --only=$BROWSERS"
           if [ -n "${{ inputs.limit }}" ]; then ARGS="$ARGS --limit=${{ inputs.limit }}"; fi
           node index.js $ARGS
 

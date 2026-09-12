@@ -94,18 +94,25 @@ editing `config/settings.js` before `docker build`.
 
 `.github/workflows/automate-backlink.yml` runs the automation on
 `ubuntu-latest` — a GitHub-hosted runner that's free with no minute limit on
-a public repo. It installs Node, Chrome, Opera, and Playwright's own
+a public repo. It installs Node, Chrome, and Playwright's own
 Chromium/Firefox from scratch on the runner each time (same steps as the
 Dockerfile, just via `apt`/`npx` instead of `RUN`), executes the run, and
 uploads the JSON/HTML report from `logs/` as a downloadable workflow
 artifact.
 
+**Opera is skipped here**: confirmed in an actual run on this runner to
+fail every launch (`Opera never opened its DevTools port in time`) — the
+same failure mode already seen testing under Docker Desktop/WSL2 (see the
+Dockerfile and `src/browsers.js`). Both the manual-dispatch default and the
+scheduled run use `--only=chrome,firefox`; pass `opera` in the `browsers`
+input on a manual run if you want to try it anyway.
+
 Push it to your repo, then either use the **Run workflow** button on the
 Actions tab (inputs let you override the target URL, keywords, browser
 subset, and site limit for that one run without editing anything) or just
-wait — it also runs automatically on the `schedule:` cron (every Monday
-06:00 UTC by default; edit the cron expression in the workflow file to
-change it).
+wait — it also runs automatically on the `schedule:` cron (daily at 02:00
+IST / 20:30 UTC by default; edit the cron expression in the workflow file
+to change it).
 
 ## Email report
 
