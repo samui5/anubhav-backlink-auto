@@ -1,9 +1,10 @@
-# automate-backlink — headless Chrome + Firefox + Opera in one image.
+# automate-backlink — headless Chrome, Edge, Chromium, Firefox, and Opera
+# in one image.
 #
-# Playwright's own Chromium/Firefox builds cover the "firefox" engine, but
-# "chrome" and "opera" in this project drive the REAL Chrome/Opera browsers
-# (see src/browsers.js), so both get installed here via apt on top of the
-# Playwright base image.
+# Playwright's own Chromium/Firefox builds cover the "chromium" and
+# "firefox" engines, but "chrome", "edge", and "opera" in this project
+# drive the REAL Chrome/Edge/Opera browsers (see src/browsers.js), so all
+# three get installed here via apt on top of the Playwright base image.
 FROM node:22-bookworm
 
 ENV DOCKER=true \
@@ -32,21 +33,29 @@ RUN wget -q -O /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-
     && rm /tmp/chrome.deb \
     && rm -rf /var/lib/apt/lists/*
 
+# Real Microsoft Edge, for the "edge" engine. Unlike Opera below, Edge is a
+# proper Playwright "channel" (chromium.launch({channel:'msedge'})) — no CDP
+# workaround needed, same mechanism as the chrome channel above.
+RUN wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-edge-keyring.gpg \
+    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-edge-keyring.gpg] https://packages.microsoft.com/repos/edge stable main" \
+       > /etc/apt/sources.list.d/microsoft-edge.list \
+    && apt-get update \
+    && apt-get install -y microsoft-edge-stable \
+    && rm -rf /var/lib/apt/lists/*
+
 # Real Opera, for the "opera" engine (launched via executablePath and
 # attached to over the classic HTTP/WebSocket CDP transport, not
 # chromium.launch() — see the big comment in src/browsers.js for why:
 # Opera's Chromium base doesn't speak Playwright's newer pipe transport).
 #
-# NOTE ON RELIABILITY: in this project's own testing, Opera has shown
-# intermittent crash-loop behavior a few seconds into headless startup
-# specifically under nested virtualization (Docker Desktop on Windows with
-# a WSL2 backend) — Chrome and Firefox were both 100% reliable in the exact
-# same container. src/browsers.js retries a few times and verifies a real
-# navigation (not just that the DevTools port answers) before trusting a
-# session. If Opera keeps failing for you in a particular environment, drop
-# it and run `--only=chrome,firefox` — those two are the ones verified
-# reliable in Docker/CI. It may well be fully stable on a real Linux host or
-# a GitHub Actions runner; this caveat is from testing on one specific setup.
+# NOTE ON RELIABILITY: confirmed unreliable both here (Docker Desktop on
+# Windows/WSL2 — intermittent crash-loop a few seconds into headless
+# startup) and on an actual GitHub Actions runner (DevTools port never
+# opens) — Chrome, Edge, Playwright's bundled Chromium, and Firefox were all
+# reliable in both environments. src/browsers.js retries a few times and
+# verifies a real navigation (not just that the DevTools port answers)
+# before trusting a session, but if Opera keeps failing for you too, drop it
+# and run `--only=chrome,edge,chromium,firefox`.
 RUN wget -qO- https://deb.opera.com/archive.key | gpg --dearmor -o /usr/share/keyrings/opera-archive-keyring.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/opera-archive-keyring.gpg] https://deb.opera.com/opera-stable/ stable non-free" \
        > /etc/apt/sources.list.d/opera-stable.list \

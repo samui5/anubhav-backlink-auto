@@ -2,10 +2,11 @@
 
 Submits one of several `anubhavtrainings.com` pages (and the YouTube
 channel), picked at random per attempt (config/settings.js), to a list of
-free ping / backlink tools (config/sites.js), driving three real browsers —
-Chrome, Firefox, and Opera — in parallel. Each browser works through the
-site list on its own, so all three run at the same time. Writes a JSON and
-an HTML log report to `logs/` when done.
+free ping / backlink tools (config/sites.js), driving up to five browser
+engines — Chrome, Edge, Playwright's bundled Chromium, Firefox, and Opera —
+in parallel (see src/browsers.js). Each engine works through the site list
+on its own, so all of them run at the same time. Writes a JSON and an HTML
+log report to `logs/` when done.
 
 **No CAPTCHA policy**: any site confirmed to sit behind a CAPTCHA or bot
 wall (reCAPTCHA, hCaptcha, Cloudflare, etc) is not kept in this project at
@@ -41,7 +42,7 @@ node index.js --only=chrome --limit=3
 node index.js --headless
 ```
 
-- `--only=chrome,firefox` — run a subset of browsers
+- `--only=chrome,edge,chromium,firefox,opera` — run a subset of engines
 - `--limit=5` — only process the first N sites
 - `--headless` — no visible windows. `pauseOnCaptcha` is automatically
   forced off in this mode (there's no window for a human to solve anything
@@ -59,31 +60,34 @@ Docker/CI (see below) or a quick one-off run:
 
 ## Docker
 
-A `Dockerfile` builds a single image with Chrome, Firefox, and Opera all
-installed, driven fully headlessly (there's no display in a container, so
-`--headless` is baked into the entrypoint regardless of
-`config/settings.js`'s local-use default):
+A `Dockerfile` builds a single image with Chrome, Edge, Playwright's
+bundled Chromium, Firefox, and Opera all installed, driven fully headlessly
+(there's no display in a container, so `--headless` is baked into the
+entrypoint regardless of `config/settings.js`'s local-use default):
 
 ```
 docker build -t automate-backlink .
 docker run --rm automate-backlink
-docker run --rm automate-backlink --only=chrome,firefox --limit=5
+docker run --rm automate-backlink --only=chrome,edge,chromium,firefox --limit=5
 docker run --rm -e TARGET_URL=https://example.com automate-backlink
 ```
 
-Verified by actually building and running this image (not just written and
-assumed to work): Chrome and Firefox both ran cleanly and reliably. Opera
-showed intermittent crash-loop behavior a few seconds into headless startup
-during testing on this machine (Docker Desktop on Windows, WSL2 backend) —
-see the comment above the Opera install step in the `Dockerfile` and the big
-comment in `src/browsers.js` for the full story (a real bug was found and
-fixed there: Opera's Chromium base doesn't support Playwright's newer
-pipe-based CDP transport, so it's launched as a raw process and attached to
-over the classic HTTP/WebSocket transport instead — but a second, harder-to-pin-down
-stability issue remains, retried a few times per launch). This may well be
-specific to nested virtualization and not reproduce on a real Linux host or
-a GitHub Actions runner; if Opera is unreliable in your environment, run
-with `--only=chrome,firefox`.
+Chrome and Firefox were both verified by actually building and running
+this image — cleanly and reliably. Opera showed intermittent crash-loop
+behavior a few seconds into headless startup during that testing (Docker
+Desktop on Windows, WSL2 backend) — see the comment above the Opera install
+step in the `Dockerfile` and the big comment in `src/browsers.js` for the
+full story (a real bug was found and fixed there: Opera's Chromium base
+doesn't support Playwright's newer pipe-based CDP transport, so it's
+launched as a raw process and attached to over the classic HTTP/WebSocket
+transport instead — but a second, harder-to-pin-down stability issue
+remains, retried a few times per launch). This isn't specific to nested
+virtualization: the exact same "DevTools port never opens" failure also
+showed up on an actual GitHub Actions runner (see below) — if Opera is
+unreliable in your environment too, run with `--only=chrome,edge,chromium,firefox`.
+Edge and Chromium are new additions here and haven't been build-tested in
+this Docker image yet the way Chrome/Firefox/Opera were — sanity-check
+your first run.
 
 To pull the target links/keywords from outside the image without a
 rebuild, either pass `-e TARGET_URLS=... -e PING_KEYWORDS=...`
@@ -94,7 +98,7 @@ editing `config/settings.js` before `docker build`.
 
 `.github/workflows/automate-backlink.yml` runs the automation on
 `ubuntu-latest` — a GitHub-hosted runner that's free with no minute limit on
-a public repo. It installs Node, Chrome, and Playwright's own
+a public repo. It installs Node, Chrome, Edge, and Playwright's own
 Chromium/Firefox from scratch on the runner each time (same steps as the
 Dockerfile, just via `apt`/`npx` instead of `RUN`), executes the run, and
 uploads the JSON/HTML report from `logs/` as a downloadable workflow
@@ -104,8 +108,9 @@ artifact.
 fail every launch (`Opera never opened its DevTools port in time`) — the
 same failure mode already seen testing under Docker Desktop/WSL2 (see the
 Dockerfile and `src/browsers.js`). Both the manual-dispatch default and the
-scheduled run use `--only=chrome,firefox`; pass `opera` in the `browsers`
-input on a manual run if you want to try it anyway.
+scheduled run use `--only=chrome,edge,chromium,firefox`; pass `opera` in
+the `browsers` input on a manual run if you want to try it anyway (expect
+it to fail).
 
 Push it to your repo, then either use the **Run workflow** button on the
 Actions tab (inputs let you override the target URL, keywords, browser
@@ -333,3 +338,9 @@ content not worth trusting further).
   "email" field) — if a `failed`/wrong-field report keeps happening for a
   specific site, add a hand-written `run()` for it instead of relying on
   the heuristic.
+- **PhantomJS is not supported and won't be added**: it's unmaintained
+  since 2018, isn't a Playwright-drivable engine at all (Playwright only
+  automates Chromium, Firefox, and WebKit), and its ancient bundled WebKit
+  fails modern TLS/JS on most live sites anyway — it wouldn't reliably
+  submit to any of these tools even if wired up through a separate
+  automation stack.

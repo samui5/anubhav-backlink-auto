@@ -29,8 +29,16 @@ const settings = {
   category: 'Education',
 
   // Which browser engines to run in parallel. Each one works through the
-  // full site list independently and on its own schedule.
-  browsers: ['chrome', 'firefox', 'opera'],
+  // full site list independently and on its own schedule. See
+  // src/browsers.js for how each is launched — chrome/edge/chromium are all
+  // Chromium-based (chrome and edge are real installed browsers via
+  // Playwright's "channel" mechanism, chromium is Playwright's own bundled
+  // build), firefox is Playwright's bundled Firefox, and opera is spawned
+  // directly and attached to over CDP (Opera's Chromium base doesn't speak
+  // Playwright's newer launch() transport) — opera is unreliable headless on
+  // Linux (Docker/CI) but left in the default list since it's untested and
+  // may work fine locally; --only=chrome,firefox,edge,chromium leaves it out.
+  browsers: ['chrome', 'edge', 'chromium', 'firefox', 'opera'],
 
   // Run with visible windows so a CAPTCHA can be solved by hand when one
   // shows up (see pauseOnCaptcha below). Set to true for unattended runs

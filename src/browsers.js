@@ -144,6 +144,27 @@ async function launch(name, settings) {
     return { browser, context };
   }
 
+  if (name === 'edge') {
+    // Unlike Opera, msedge is a real Playwright "channel" (same mechanism
+    // as chrome) — no CDP/executablePath workaround needed. Ships with
+    // Windows by default; installed via apt in Docker/CI (see Dockerfile
+    // and the workflow's "Install Microsoft Edge" step).
+    const browser = await chromium.launch({ ...common, channel: 'msedge', args: settings.chromiumArgs });
+    const context = await browser.newContext();
+    return { browser, context };
+  }
+
+  if (name === 'chromium') {
+    // Playwright's own bundled Chromium build (the "headless Chrome" most
+    // Playwright/Puppeteer scripts mean) rather than a real installed
+    // browser — no separate OS install needed, `playwright install`
+    // already fetches it (see package.json's postinstall and the
+    // workflow's Playwright install step).
+    const browser = await chromium.launch({ ...common, args: settings.chromiumArgs });
+    const context = await browser.newContext();
+    return { browser, context };
+  }
+
   if (name === 'firefox') {
     const browser = await firefox.launch(common);
     const context = await browser.newContext();
@@ -154,7 +175,7 @@ async function launch(name, settings) {
     return launchOperaViaCdp(settings);
   }
 
-  throw new Error(`Unknown browser "${name}". Expected chrome, firefox, or opera.`);
+  throw new Error(`Unknown browser "${name}". Expected chrome, edge, chromium, firefox, or opera.`);
 }
 
 module.exports = { launch };

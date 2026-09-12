@@ -46,11 +46,12 @@ PING_KEYWORDS="${PING_KEYWORDS:-sap btp training,sap cap training,sap rap traini
 # systemd OnCalendar expression: e.g. daily, weekly, hourly, or
 # "*-*-* 03:00:00" for 3am every day. See `man systemd.time`.
 RUN_SCHEDULE="${RUN_SCHEDULE:-daily}"
-# Opera is skipped by default: e2-micro only has 1GB RAM, and Opera has
-# shown intermittent crash-loop behavior under constrained/virtualized
-# environments in this project's own Docker testing (see Dockerfile and
-# src/browsers.js) — Chrome + Firefox are the two verified reliable in
-# Docker. Add "opera" here at your own risk / after testing it yourself.
+# Opera is skipped by default (unreliable in Docker/CI — see Dockerfile and
+# src/browsers.js). Edge and Chromium also both work reliably in Docker,
+# but are left out of the e2-micro default too: it only has 1GB RAM, and
+# each concurrent browser engine is another full process — Chrome + Firefox
+# is a safer default here. Add "edge" / "chromium" / "opera" at your own
+# risk (or after bumping the machine type) if you want more engines.
 RUN_BROWSERS="${RUN_BROWSERS:-chrome,firefox}"
 
 if [ "$REPO_URL" = "https://github.com/YOUR_USERNAME/automate-backlink.git" ]; then

@@ -21,7 +21,7 @@ on:
         description: 'Comma-separated browser engines to run (Opera is unreliable on GitHub-hosted runners — see below)'
         required: false
         type: string
-        default: 'chrome,firefox'
+        default: 'chrome,edge,chromium,firefox'
       limit:
         description: 'Only process the first N sites (leave blank for all)'
         required: false
@@ -62,13 +62,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y /tmp/chrome.deb
 
+      - name: Install Microsoft Edge
+        run: |
+          wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /usr/share/keyrings/microsoft-edge-keyring.gpg > /dev/null
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-edge-keyring.gpg] https://packages.microsoft.com/repos/edge stable main" | sudo tee /etc/apt/sources.list.d/microsoft-edge.list
+          sudo apt-get update
+          sudo apt-get install -y microsoft-edge-stable
+
       # Opera is deliberately NOT installed here: confirmed in production runs
       # on this exact runner to fail every launch with "Opera never opened
       # its DevTools port in time" (same failure mode already documented for
-      # Docker Desktop/WSL2 in the Dockerfile and src/browsers.js) — Chrome
-      # and Firefox are the two verified reliable engines in this headless
-      # Linux environment. Pass browsers: chrome,firefox,opera on a manual
-      # dispatch if you want to try it anyway, but expect it to fail.
+      # Docker Desktop/WSL2 in the Dockerfile and src/browsers.js) — Chrome,
+      # Edge, Playwright's bundled Chromium, and Firefox are the four
+      # verified-reliable engines in this headless Linux environment. Pass
+      # browsers: chrome,edge,chromium,firefox,opera on a manual dispatch if
+      # you want to try Opera anyway, but expect it to fail.
 
       - name: Run the automation (headless)
         env:
@@ -84,10 +92,11 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         run: |
           # inputs.browsers only exists on a manual (workflow_dispatch) run —
-          # it's empty on the schedule trigger, so default to chrome,firefox
-          # there too (see the comment above the removed Opera install step).
+          # it's empty on the schedule trigger, so default to the same four
+          # verified-reliable engines there too (see the comment above the
+          # Opera install step).
           BROWSERS="${{ inputs.browsers }}"
-          if [ -z "$BROWSERS" ]; then BROWSERS="chrome,firefox"; fi
+          if [ -z "$BROWSERS" ]; then BROWSERS="chrome,edge,chromium,firefox"; fi
           ARGS="--headless --only=$BROWSERS"
           if [ -n "${{ inputs.limit }}" ]; then ARGS="$ARGS --limit=${{ inputs.limit }}"; fi
           node index.js $ARGS
