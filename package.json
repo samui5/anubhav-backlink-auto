@@ -1,0 +1,15 @@
+{
+  "name": "automate-backlink",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Submits a target URL (with SEO keywords) to a list of free ping/backlink tools, in parallel across Chrome, Firefox and Opera, and writes a JSON + HTML log report.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "postinstall": "playwright install chromium firefox"
+  },
+  "dependencies": {
+    "nodemailer": "^10.0.9",
+    "playwright": "^1.63.0"
+  }
+}
