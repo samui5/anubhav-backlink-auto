@@ -119,6 +119,44 @@ wait — it also runs automatically on the `schedule:` cron (daily at 02:00
 IST / 20:30 UTC by default; edit the cron expression in the workflow file
 to change it).
 
+### Per-country workflows (free proxies)
+
+`.github/workflows/automate-backlink-{usa,australia,canada,germany,singapore}.yml`
+are otherwise-identical copies of the base workflow above (this one is left
+completely untouched), each setting one extra env var —
+`PROXY_COUNTRY: US` / `AU` / `CA` / `DE` / `SG` — which routes every browser
+engine for that run through a free public proxy in that country (see
+"Free proxies" below). Manual-trigger only (`workflow_dispatch`), no
+automatic schedule — add your own `schedule:` cron to a copy if you want
+one recurring.
+
+Each writes its own artifact (`backlink-run-report-usa`, etc.) and, if
+`GMAIL_APP_PASSWORD` is set, tags its email subject with the country
+(`[US] Backlink automation report — ...`) so five runs' worth of reports
+stay easy to tell apart in an inbox.
+
+### Free proxies
+
+`src/proxy.js` pulls free public proxy candidates for a country from two
+independent sources (geonode, proxyscrape), verifies each one is actually
+reachable (a real HTTPS request through it) before trusting it, and hands
+the first working one to whichever browser engines run — set via the
+`PROXY_COUNTRY` env var (`US`, `AU`, `CA`, `DE`, or `SG`; the per-country
+workflows above set this for you).
+
+Worth being clear-eyed about since "free proxy" undersells how unreliable
+these are: most candidates in any given fetch are already dead, and a
+notable fraction of the ones that *do* respond may log or tamper with
+traffic — never route anything sensitive through one. This project only
+ever uses them to vary the apparent source country of outbound ping/backlink
+form submissions, nothing involving credentials. If every candidate for a
+country fails (which happens — it's normal, not a bug), the run **proceeds
+without a proxy** rather than failing outright; check the run's console
+output / report for `Proxy: none reachable for <CC> — running direct`.
+For anything that actually needs to work reliably, a small paid rotating
+proxy service (Bright Data, Webshare, etc.) is the trustworthy version of
+this same idea.
+
 ## Email report
 
 Every run — local, Docker, GitHub Actions, or the GCP scheduled timer —

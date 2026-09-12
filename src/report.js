@@ -78,7 +78,11 @@ function writeHtmlReport(htmlPath, summary, results) {
   <p class="meta">
     Started: ${escapeHtml(summary.startedAt)}<br>
     Finished: ${escapeHtml(summary.finishedAt)}<br>
-    Total attempts: ${summary.totalAttempts}
+    Total attempts: ${summary.totalAttempts}${
+      summary.proxyCountry
+        ? `<br>Proxy: ${summary.proxy ? escapeHtml(summary.proxy) + ` (${escapeHtml(summary.proxyCountry)})` : `none reachable for ${escapeHtml(summary.proxyCountry)} — ran direct`}`
+        : ''
+    }
   </p>
 
   <h2>Target links (random one picked per attempt)</h2>

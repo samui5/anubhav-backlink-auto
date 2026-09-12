@@ -17,6 +17,15 @@
 // browsers — confirmed via a live headless test run). `site.protected`
 // still exists as plumbing in src/worker.js for any future site that turns
 // out to need it, but nothing here currently uses it.
+//
+// Same policy for confirmed-dead sites: verified via direct curl (not just a
+// CI run, since a CI-only failure could be an IP block rather than a dead
+// site) on 2026-09-12. MySitesLink (us.mysiteslink.com doesn't resolve),
+// PingMyLink (pingmylink.com times out on every request), TotalPing
+// (totalping.com loads but its form is gone — the page is now just a
+// livescore widget, no URL submission left), and PingMyUrl Social
+// (pingmyurl.com/social returns an empty page, no form at all) were removed
+// outright rather than left to fail every run.
 
 const sites = [
   {
@@ -59,7 +68,6 @@ const sites = [
     },
   },
   { name: 'PingMyUrls', url: 'https://pingmyurls.com/', verified: false },
-  { name: 'PingMyUrl Social', url: 'http://www.pingmyurl.com/social/', verified: false },
   { name: 'PingFarm', url: 'http://pingfarm.com/', verified: false },
   {
     name: 'Ping-O-Matic',
@@ -74,18 +82,16 @@ const sites = [
       await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
     },
   },
-  { name: 'PingMyLink (singular)', url: 'http://www.pingmylink.com/', verified: false },
   { name: 'SEOSpaceship Tools', url: 'https://www.seospaceship.com/tools/', verified: false },
   {
     name: 'Free Web Submission (UK)',
     url: 'http://www.free-web-submission.co.uk/index9.html',
     verified: false,
+    note: "Its only form field is an AWeber mailing-list opt-in ('custom Website Address' + required email) rather than a real backlink/ping submission — the generic engine correctly finds no URL-like field. Kept for completeness.",
   },
   { name: 'ExciteSubmit', url: 'https://excitesubmit.com/', verified: false },
-  { name: 'MySitesLink', url: 'https://us.mysiteslink.com/', verified: false },
   { name: 'Free-Backlinks.net Ping URL', url: 'http://free-backlinks.net/ping-my-url.html', verified: false },
   { name: 'PingSitemap', url: 'http://pingsitemap.com/', verified: false },
-  { name: 'TotalPing', url: 'https://totalping.com/', verified: false },
   {
     name: 'FeedBurner Ping',
     url: 'https://feedburner.google.com/fb/a/ping',

@@ -29,9 +29,13 @@ function summaryLines(summary) {
     .map(([url, count]) => `  ${url}: ${count}`)
     .join('\n');
 
+  const proxyLine = summary.proxyCountry
+    ? `\nProxy: ${summary.proxy ? `${summary.proxy} (${summary.proxyCountry})` : `none reachable for ${summary.proxyCountry} — ran direct`}`
+    : '';
+
   return `Started:  ${summary.startedAt}
 Finished: ${summary.finishedAt}
-Total attempts: ${summary.totalAttempts}
+Total attempts: ${summary.totalAttempts}${proxyLine}
 
 By status:
 ${statusLines}
@@ -62,7 +66,8 @@ async function sendReportEmail({ settings, summary, htmlPath, jsonPath }) {
 
   const failedCount = (summary.byStatus.failed || 0) + (summary.byStatus['skipped-captcha'] || 0);
   const outcome = failedCount > 0 ? `${failedCount} issue(s)` : 'all clean';
-  const subject = `Backlink automation report — ${summary.totalAttempts} attempts, ${outcome} — ${summary.finishedAt}`;
+  const countryTag = summary.proxyCountry ? `[${summary.proxyCountry}] ` : '';
+  const subject = `${countryTag}Backlink automation report — ${summary.totalAttempts} attempts, ${outcome} — ${summary.finishedAt}`;
 
   try {
     const transport = buildTransport(email);

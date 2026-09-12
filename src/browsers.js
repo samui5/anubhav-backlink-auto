@@ -69,6 +69,7 @@ async function launchOperaOnce(settings) {
     '--no-first-run',
     '--no-default-browser-check',
     ...settings.chromiumArgs,
+    ...(settings.proxy ? [`--proxy-server=${settings.proxy.server}`] : []),
     ...(settings.headless ? ['--headless'] : []),
     'about:blank',
   ];
@@ -137,9 +138,15 @@ async function launchOperaViaCdp(settings, attempts = 3) {
 // closed by the caller when done; `context` is a fresh browser context.
 async function launch(name, settings) {
   const common = { headless: settings.headless, slowMo: settings.slowMoMs };
+  // Playwright's own proxy option (as opposed to Opera's --proxy-server CLI
+  // flag above, which has to be set at spawn time since it's launched as a
+  // raw process): { server: 'http://ip:port' }, same shape src/proxy.js
+  // returns. Every engine below shares this — one PROXY_COUNTRY config
+  // applies to the whole run, not per-engine.
+  const proxy = settings.proxy ? { server: settings.proxy.server } : undefined;
 
   if (name === 'chrome') {
-    const browser = await chromium.launch({ ...common, channel: 'chrome', args: settings.chromiumArgs });
+    const browser = await chromium.launch({ ...common, channel: 'chrome', args: settings.chromiumArgs, proxy });
     const context = await browser.newContext();
     return { browser, context };
   }
@@ -149,7 +156,7 @@ async function launch(name, settings) {
     // as chrome) — no CDP/executablePath workaround needed. Ships with
     // Windows by default; installed via apt in Docker/CI (see Dockerfile
     // and the workflow's "Install Microsoft Edge" step).
-    const browser = await chromium.launch({ ...common, channel: 'msedge', args: settings.chromiumArgs });
+    const browser = await chromium.launch({ ...common, channel: 'msedge', args: settings.chromiumArgs, proxy });
     const context = await browser.newContext();
     return { browser, context };
   }
@@ -160,13 +167,13 @@ async function launch(name, settings) {
     // browser — no separate OS install needed, `playwright install`
     // already fetches it (see package.json's postinstall and the
     // workflow's Playwright install step).
-    const browser = await chromium.launch({ ...common, args: settings.chromiumArgs });
+    const browser = await chromium.launch({ ...common, args: settings.chromiumArgs, proxy });
     const context = await browser.newContext();
     return { browser, context };
   }
 
   if (name === 'firefox') {
-    const browser = await firefox.launch(common);
+    const browser = await firefox.launch({ ...common, proxy });
     const context = await browser.newContext();
     return { browser, context };
   }

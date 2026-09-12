@@ -80,6 +80,16 @@ const settings = {
 
   logsDir: path.join(__dirname, '..', 'logs'),
 
+  // Routes every browser engine through a free public proxy in this
+  // country for the whole run (US/AU/CA/DE/SG, or any 2-letter country
+  // code — see src/proxy.js). Resolved once at startup in index.js (it
+  // needs an async network call, so it can't live here) and attached to
+  // runSettings.proxy; null if PROXY_COUNTRY isn't set, or if none of that
+  // country's free candidates turned out to be reachable (the run still
+  // proceeds without one rather than failing — see index.js).
+  proxyCountry: process.env.PROXY_COUNTRY || null,
+  proxy: null,
+
   // Emails the final HTML + JSON report after every run, success or
   // failure. Sent via Gmail SMTP with an App Password (needs 2-Step
   // Verification turned on for the sending account) — see src/mailer.js.

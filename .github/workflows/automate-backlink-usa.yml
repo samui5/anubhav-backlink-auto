@@ -1,0 +1,97 @@
+name: Backlink Automation — USA
+
+# Same as automate-backlink.yml, just with PROXY_COUNTRY=US set on the run
+# step (see src/proxy.js): every browser engine is routed through a free
+# public US proxy for the whole run, verified reachable before use, falling
+# back to running direct if none of that country's free candidates
+# responded (this is expected sometimes — see README.md's "Free proxies"
+# section). Manual trigger only — no automatic schedule, unlike the base
+# workflow — so 5 country runs don't all start firing on their own the
+# moment this file lands; add a `schedule:` trigger yourself if you want
+# this one recurring too.
+on:
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: 'URL to submit (overrides config/settings.js for this run)'
+        required: false
+        type: string
+      keywords:
+        description: 'Comma-separated keywords (overrides config/settings.js for this run)'
+        required: false
+        type: string
+      browsers:
+        description: 'Comma-separated browser engines to run (Opera is unreliable on GitHub-hosted runners — see below)'
+        required: false
+        type: string
+        default: 'chrome,edge,chromium,firefox'
+      limit:
+        description: 'Only process the first N sites (leave blank for all)'
+        required: false
+        type: string
+
+jobs:
+  run-automation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Install Playwright's Chromium + Firefox (with OS deps)
+        run: npx playwright install --with-deps chromium firefox
+
+      - name: Install Google Chrome
+        run: |
+          wget -q -O /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo apt-get update
+          sudo apt-get install -y /tmp/chrome.deb
+
+      - name: Install Microsoft Edge
+        run: |
+          wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /usr/share/keyrings/microsoft-edge-keyring.gpg > /dev/null
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-edge-keyring.gpg] https://packages.microsoft.com/repos/edge stable main" | sudo tee /etc/apt/sources.list.d/microsoft-edge.list
+          sudo apt-get update
+          sudo apt-get install -y microsoft-edge-stable
+
+      # Opera is deliberately NOT installed here — see the base workflow
+      # (automate-backlink.yml) for why: confirmed unreliable on this exact
+      # runner.
+
+      - name: Run the automation (headless, routed through a US proxy)
+        env:
+          CI: 'true' # already set by GitHub Actions; makes chromiumArgs add --no-sandbox etc.
+          PROXY_COUNTRY: US
+          TARGET_URL: ${{ inputs.target_url }}
+          PING_KEYWORDS: ${{ inputs.keywords }}
+          # Report email (config/settings.js -> email / src/mailer.js), sent
+          # at the end of every run. Add GMAIL_APP_PASSWORD as a repo secret
+          # (Settings -> Secrets and variables -> Actions) -- generate it at
+          # https://myaccount.google.com/apppasswords for wednesday.ui5@gmail.com
+          # (requires 2-Step Verification on that account). Leaving the
+          # secret unset just skips the email; it doesn't fail the run.
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: |
+          BROWSERS="${{ inputs.browsers }}"
+          if [ -z "$BROWSERS" ]; then BROWSERS="chrome,edge,chromium,firefox"; fi
+          ARGS="--headless --only=$BROWSERS"
+          if [ -n "${{ inputs.limit }}" ]; then ARGS="$ARGS --limit=${{ inputs.limit }}"; fi
+          node index.js $ARGS
+
+      - name: Upload run report
+        if: always() # keep the report even if the run above exits non-zero
+        uses: actions/upload-artifact@v4
+        with:
+          name: backlink-run-report-usa
+          path: logs/
+          retention-days: 30

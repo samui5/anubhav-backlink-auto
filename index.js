@@ -4,6 +4,7 @@ const { runBrowserWorker } = require('./src/worker');
 const { RunLogger } = require('./src/logger');
 const { writeHtmlReport } = require('./src/report');
 const { sendReportEmail } = require('./src/mailer');
+const { findWorkingProxy } = require('./src/proxy');
 
 function parseArgs(argv) {
   const opts = { only: null, limit: null, headless: null };
@@ -50,7 +51,19 @@ async function main() {
 
   const browsersToRun = opts.only ? settings.browsers.filter((b) => opts.only.includes(b)) : settings.browsers;
 
+  if (runSettings.proxyCountry) {
+    console.log(`Resolving a free proxy for ${runSettings.proxyCountry}...`);
+    runSettings.proxy = await findWorkingProxy(runSettings.proxyCountry);
+  }
+
   console.log(`Target URLs (random per attempt): ${runSettings.targetUrls.join(', ')}`);
+  if (runSettings.proxyCountry) {
+    console.log(
+      runSettings.proxy
+        ? `Proxy: ${runSettings.proxy.server} (${runSettings.proxy.country})`
+        : `Proxy: none reachable for ${runSettings.proxyCountry} — running direct`
+    );
+  }
   console.log(`Sites: ${sites.length} unique | Browsers: ${browsersToRun.join(', ')}`);
   console.log(`Headless: ${runSettings.headless} | Pause on CAPTCHA: ${runSettings.pauseOnCaptcha}\n`);
 

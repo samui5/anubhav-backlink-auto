@@ -40,6 +40,8 @@ class RunLogger {
       startedAt: this.startedAt.toISOString(),
       finishedAt: new Date().toISOString(),
       targetUrls: this.settings.targetUrls,
+      proxyCountry: this.settings.proxyCountry || null,
+      proxy: this.settings.proxy ? this.settings.proxy.server : null,
       totalAttempts: this.results.length,
       byStatus,
       byBrowser,
