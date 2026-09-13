@@ -49,8 +49,8 @@ class RunLogger {
     };
   }
 
-  writeJson() {
-    const payload = { summary: this.summary(), results: this.results };
+  writeJson(enrichment) {
+    const payload = { summary: this.summary(), results: this.results, enrichment: enrichment || null };
     fs.writeFileSync(this.jsonPath, JSON.stringify(payload, null, 2), 'utf8');
     return this.jsonPath;
   }

@@ -101,6 +101,92 @@ const settings = {
     to: process.env.EMAIL_TO || 'anubhav.abap@gmail.com',
     appPassword: process.env.GMAIL_APP_PASSWORD || '',
   },
+
+  // Pulls fresh target URLs at the start of every run instead of only ever
+  // hitting the static list above — a new blog post (sitemap.xml) or a new
+  // video (the channel's public upload feed, no API key needed) is picked
+  // up automatically and merged into the pool pickTargetUrl() draws from.
+  // See src/discovery.js. Both sources are best-effort and never fail the
+  // run: a broken/unreachable sitemap or a channel handle that fails to
+  // resolve just means discovery contributes nothing that run, logged as an
+  // error in the report rather than thrown.
+  discovery: {
+    enabled: process.env.DISCOVERY_ENABLED !== 'false',
+    sitemapUrl: process.env.SITEMAP_URL || 'https://www.anubhavtrainings.com/sitemap.xml',
+    maxSitemapUrls: Number(process.env.MAX_SITEMAP_URLS || 20),
+    youtubeChannelUrl: process.env.YOUTUBE_CHANNEL_URL || 'https://www.youtube.com/@AnubhavOberoy',
+    maxYoutubeUrls: Number(process.env.MAX_YOUTUBE_URLS || 10),
+  },
+
+  // Business profile used by directory-style sites in config/directories.js
+  // that ask for more than just a URL (name/category/description/email),
+  // unlike the plain ping/backlink-maker sites in config/sites.js.
+  business: {
+    name: process.env.BUSINESS_NAME || 'Anubhav Trainings',
+    category: process.env.BUSINESS_CATEGORY || 'Education & Training',
+    description:
+      process.env.BUSINESS_DESCRIPTION ||
+      'Corporate and self-paced training on SAP BTP, CAP, RAP, UI5/OData, and Generative AI.',
+    email: process.env.BUSINESS_EMAIL || '',
+  },
+
+  // Cross-posts new content as real articles on Dev.to / Hashnode via their
+  // official APIs (not form-scraping) with a canonical link back to the
+  // original page — see src/syndication.js. Each is independently disabled
+  // unless its API key/token env var is set, so this is a no-op until you
+  // add credentials (see README.md for how to get each one). Recap articles
+  // for new videos are only generated when anthropicApiKey is also set
+  // (src/transcripts.js fetches the caption track, src/syndication.js calls
+  // the Claude API to turn it into a short post) — skipped otherwise.
+  syndication: {
+    devto: {
+      enabled: !!process.env.DEVTO_API_KEY,
+      apiKey: process.env.DEVTO_API_KEY || '',
+    },
+    hashnode: {
+      enabled: !!(process.env.HASHNODE_TOKEN && process.env.HASHNODE_PUBLICATION_ID),
+      token: process.env.HASHNODE_TOKEN || '',
+      publicationId: process.env.HASHNODE_PUBLICATION_ID || '',
+    },
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
+    // Videos already turned into a recap post are recorded here (see
+    // src/syndication.js) so the same video isn't re-syndicated every run.
+    ledgerPath: path.join(__dirname, '..', 'logs', 'syndicated.json'),
+  },
+
+  // Shares each run's target links to social profiles via official REST
+  // APIs (not browser automation — these platforms' ToS and bot-detection
+  // make form-filling both fragile and risky). Each platform independently
+  // disabled unless its credentials are set — see README.md for how to
+  // obtain them (all three require creating a developer app on that
+  // platform; none of that can be done by this codebase on its own).
+  social: {
+    twitter: {
+      enabled: !!process.env.TWITTER_BEARER_TOKEN,
+      bearerToken: process.env.TWITTER_BEARER_TOKEN || '',
+    },
+    linkedin: {
+      enabled: !!(process.env.LINKEDIN_ACCESS_TOKEN && process.env.LINKEDIN_ACTOR_URN),
+      accessToken: process.env.LINKEDIN_ACCESS_TOKEN || '',
+      actorUrn: process.env.LINKEDIN_ACTOR_URN || '',
+    },
+    facebook: {
+      enabled: !!(process.env.FACEBOOK_PAGE_ACCESS_TOKEN && process.env.FACEBOOK_PAGE_ID),
+      pageAccessToken: process.env.FACEBOOK_PAGE_ACCESS_TOKEN || '',
+      pageId: process.env.FACEBOOK_PAGE_ID || '',
+    },
+  },
+
+  // Rolling per-site success-history ledger (see src/reliability.js) used
+  // to flag sites that have quietly gone bad (started CAPTCHA-walling,
+  // redirecting to a login page, etc.) across several runs rather than
+  // reacting to one noisy run. Persists across runs in Docker/local as long
+  // as ./logs is a real (not ephemeral) directory; in GitHub Actions it's
+  // restored/saved via actions/cache in the workflow, since each run starts
+  // from a fresh checkout otherwise.
+  reliability: {
+    ledgerPath: path.join(__dirname, '..', 'logs', 'site-history.json'),
+  },
 };
 
 function pickKeyword(index) {

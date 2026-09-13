@@ -6,7 +6,12 @@ free ping / backlink tools (config/sites.js), driving up to five browser
 engines — Chrome, Edge, Playwright's bundled Chromium, Firefox, and Opera —
 in parallel (see src/browsers.js). Each engine works through the site list
 on its own, so all of them run at the same time. Writes a JSON and an HTML
-log report to `logs/` when done.
+log report to `logs/` when done, and (see "Off-page automation extras"
+below) also: pulls fresh URLs from the site's sitemap and the YouTube
+channel's own upload feed every run instead of a static list, cross-posts
+new content to Dev.to/Hashnode with a canonical link back, optionally
+shares to X/LinkedIn/Facebook via their official APIs, and tracks each
+site's success rate over time to flag ones that have quietly gone bad.
 
 **No CAPTCHA policy**: any site confirmed to sit behind a CAPTCHA or bot
 wall (reCAPTCHA, hCaptcha, Cloudflare, etc) is not kept in this project at
@@ -57,6 +62,158 @@ Docker/CI (see below) or a quick one-off run:
 - `TARGET_URL` — forces every submission to this one single link instead
   (overrides `TARGET_URLS`).
 - `PING_KEYWORDS` — comma-separated keywords, rotated one per site.
+
+## Off-page automation extras
+
+Eight ideas for extending off-page SEO beyond the ping/backlink site list,
+implemented 2026-09-13. Discovery and reliability tracking are on by
+default and need no setup; everything else is independently a no-op until
+you add its own credentials as env vars (locally/Docker) or repo secrets
+(GitHub Actions — already wired into every `.github/workflows/*.yml`).
+
+| # | Idea | Module | Needs |
+|---|---|---|---|
+| 1 | Sitemap-driven URL discovery | `src/discovery.js` | nothing — on by default |
+| 2 | Per-video targeting | `src/discovery.js` | nothing — on by default |
+| 3 | Site reliability tracking | `src/reliability.js` | nothing — on by default |
+| 4/5 | Directories / profile backlinks | `config/directories.js` | see below — currently empty |
+| 6 | Blog syndication (Dev.to/Hashnode) | `src/syndication.js` | `DEVTO_API_KEY` and/or `HASHNODE_TOKEN`+`HASHNODE_PUBLICATION_ID` |
+| 7 | Video-recap syndication | `src/syndication.js` + `src/transcripts.js` | the above, plus `ANTHROPIC_API_KEY` |
+| 8 | Social sharing | `src/social.js` | `TWITTER_BEARER_TOKEN` / `LINKEDIN_ACCESS_TOKEN`+`LINKEDIN_ACTOR_URN` / `FACEBOOK_PAGE_ACCESS_TOKEN`+`FACEBOOK_PAGE_ID` |
+
+### 1/2. Sitemap + YouTube discovery
+
+`src/discovery.js` fetches `config/settings.js`'s `discovery.sitemapUrl`
+(default: `anubhavtrainings.com/sitemap.xml`, handles a plain `<urlset>` or
+a `<sitemapindex>` of child sitemaps) and the public Atom feed for
+`discovery.youtubeChannelUrl` (`https://www.youtube.com/feeds/videos.xml?channel_id=...`
+— resolves an `@handle`/`/c/`/`/user/` URL to its `UC...` channel ID first;
+no YouTube Data API key needed for any of this). Both lists get merged into
+the target-URL pool `pickTargetUrl()` draws from for that run — a new blog
+post or video is in the rotation automatically, no `config/settings.js`
+edit required. Fully best-effort: a broken sitemap or an unresolvable
+channel handle just logs a warning and contributes nothing that run, it
+never fails the run. Override via `DISCOVERY_ENABLED=false`, `SITEMAP_URL`,
+`MAX_SITEMAP_URLS`, `YOUTUBE_CHANNEL_URL`, `MAX_YOUTUBE_URLS`.
+
+### 3. Site reliability tracking
+
+`src/reliability.js` appends every attempt from every run into
+`logs/site-history.json` (capped to the most recent 20 attempts per site),
+then reports each site's rolling success rate and flags any with a rate
+under 50% across at least 4 attempts — the report's "Site reliability"
+section. This is what turns "one bad run" into "this site has actually
+gone bad" (started CAPTCHA-walling automated traffic, redirecting to a
+login page, etc. — exactly the two failure modes found live while
+researching the current site list, see `config/sites.js`'s own comments).
+Needs `logs/` to actually persist across runs to be useful: on GitHub
+Actions each run starts from a fresh checkout, so every workflow restores
+this file (and the syndication ledger) via `actions/cache` before the run
+and saves it back after — see the "Restore/Save reliability + syndication
+ledgers" steps. Locally/Docker it's just a file on disk; mount `./logs` as
+a volume (`docker run -v $(pwd)/logs:/app/logs ...`) if you want it to
+survive between container runs there too.
+
+### 4/5. Directories and profile/bio backlinks — currently empty, by design
+
+`config/directories.js` exists (with the same richer `ctx.business`
+plumbing as `config/sites.js`'s `ctx`, wired in `src/worker.js`) but ships
+empty. Real research into free, instant, no-signup business/training
+directories (2026-09-13) hit three consistent walls instead of viable
+candidates — see the comment at the top of that file for the specific
+sites tried:
+
+- **Paywalled**: looks like a plain form, but the "free" submission
+  redirects to a payment page before anything actually gets listed.
+- **Signup-gated**: requires creating an account first, which itself
+  requires verifying an email inbox — not something this codebase can do
+  unattended.
+- **Inappropriate to automate against**: a genuinely simple, captcha-free
+  form on an official institutional site (a UN body's course catalog) —
+  but that's a real request reviewed by real staff, not a disposable SEO
+  tool, and this project's own safety tooling correctly refused a live
+  test submission there for exactly that reason. Don't add
+  `.gov`/`.un.org`/similar institutional intake forms here on the theory
+  that nothing technical stops it.
+
+If you find a genuine free/instant/no-signup directory later, it's a
+plain object in `config/directories.js` with the same shape as a
+`config/sites.js` entry, plus access to `ctx.business.{name,category,
+description,email}` (from `config/settings.js`'s `business` block —
+`BUSINESS_NAME`/`BUSINESS_CATEGORY`/`BUSINESS_DESCRIPTION`/`BUSINESS_EMAIL`
+env vars).
+
+### 6/7. Content syndication (Dev.to / Hashnode)
+
+`src/syndication.js` cross-posts real content via each platform's official
+API — never browser/form automation, unlike `config/sites.js` — with a
+`canonical_url` pointing back at the original so search engines credit the
+source instead of flagging duplicate content:
+
+- **Idea 6 (blog posts)**: each run, up to 2 sitemap pages not yet
+  syndicated (tracked in `logs/syndicated.json`) are loaded in a headless
+  browser, their readable text extracted, and posted as-is. Needs no LLM
+  and always works once a platform is configured.
+- **Idea 7 (video recaps)**: up to 1 not-yet-syndicated video per run has
+  its caption track fetched (`src/transcripts.js` — a reverse-engineered
+  scrape of the same data YouTube's own player uses, since there's no
+  public API for this; inherently fragile, and **as of 2026-09-13 YouTube's
+  legacy caption endpoint is returning empty responses for
+  auto-generated/"asr" tracks specifically** — so this will often skip
+  right now until either that changes or it's replaced with a proper
+  YouTube Data API `captions.download` call, which needs OAuth as the
+  channel owner) and, if that succeeds, summarized into a ~300-word recap
+  by the Claude API. Skipped gracefully (never an error) whenever a
+  transcript isn't available or `ANTHROPIC_API_KEY` isn't set.
+
+Setup:
+
+- **Dev.to**: generate an API key at
+  <https://dev.to/settings/extensions> ("DEV API Keys") and set
+  `DEVTO_API_KEY`. Verified live against the real API in this project
+  (a deliberately-invalid key correctly got a clean `401`) — the endpoint
+  and payload shape are confirmed correct.
+- **Hashnode**: generate a Personal Access Token at
+  <https://hashnode.com/settings/developer>, find your publication ID from
+  your blog dashboard's URL, and set `HASHNODE_TOKEN` +
+  `HASHNODE_PUBLICATION_ID`. **Unverified** — no token was available to
+  test against the live API, so `postToHashnode()` matches Hashnode's
+  documented GraphQL schema at the time this was written but hasn't
+  actually been exercised; sanity-check your first real post.
+- **Claude API** (video recaps only): create a key at
+  <https://console.anthropic.com/settings/keys> and set
+  `ANTHROPIC_API_KEY`.
+
+### 8. Social sharing
+
+`src/social.js` shares this run's picked target link to X/LinkedIn/Facebook
+via their official REST APIs — deliberately not Playwright/form automation
+(logging into a personal or company social account and clicking through a
+compose box is exactly what these platforms' bot-detection is built to
+catch, far more aggressively than a free SEO ping tool, and a flagged
+social account is a much worse outcome than one failed ping). Each
+platform requires creating a developer app on that platform — something
+this codebase can't do for you:
+
+- **X/Twitter**: create a project + app at
+  <https://developer.x.com>, generate a **user-context** OAuth 2.0 token
+  with `tweet.write` scope (an app-only/read-only bearer token cannot
+  post), set `TWITTER_BEARER_TOKEN`. Posting is on X's paid API tiers as of
+  2026.
+- **LinkedIn**: create an app at
+  <https://www.linkedin.com/developers/apps>, request the "Share on
+  LinkedIn" product (needs review/approval), generate an access token with
+  `w_member_social` (or `w_organization_social`) scope, set
+  `LINKEDIN_ACCESS_TOKEN` and `LINKEDIN_ACTOR_URN` (e.g.
+  `urn:li:person:xxxx` or `urn:li:organization:xxxx`).
+- **Facebook**: create an app at <https://developers.facebook.com/apps>,
+  get a long-lived Page Access Token for your Page via Graph API Explorer,
+  set `FACEBOOK_PAGE_ACCESS_TOKEN` and `FACEBOOK_PAGE_ID`.
+
+None of the three above were exercised against a live account (no
+developer apps were available to test with) — the request shapes match
+each platform's official documented API, but treat the first real run as a
+sanity check, same as Hashnode.
 
 ## Docker
 
@@ -260,68 +417,90 @@ limits, it's just there for whenever you're done with it.
 ## How it works
 
 - **config/settings.js** — the target link list (one picked at random per
-  site attempt: the homepage plus five specific pages/channel — see
-  `targetUrls`), the keyword list (rotated one per site: `sap btp training`,
-  `sap cap training`, `sap rap training`, `sap gen ai course`), and run
-  options (headless, timeouts, 20-second post-submit wait, CAPTCHA
-  behavior).
-- **config/sites.js** — the deduplicated site list (60 unique sites — see
-  "Site list" below). Each entry is either:
-  - **verified** — a hand-written `run()` using selectors confirmed against
-    the live site on 2026-09-12 (Site24x7, Ping-O-Matic, PrepostSEO x2,
-    PingMyLinks, Naklov, SEOQueen, MassPingTool, WMTools), or
-  - **unverified** — no `run()`, so `src/engine.js`'s generic heuristic
-    engine handles it: it looks for a URL-shaped input, an optional
-    keyword-shaped input, and a submit-shaped button. These sites redesign
-    their forms often (or, for the older ping directories, may no longer
-    exist at all), so treat unverified results as best-effort — check the
-    report for `failed` entries.
+  site attempt: the homepage plus a few specific pages/channel — see
+  `targetUrls` — merged at runtime with whatever `src/discovery.js` finds,
+  see "Off-page automation extras" above), the keyword list (rotated one
+  per site), and run options (headless, timeouts, 20-second post-submit
+  wait, CAPTCHA behavior).
+- **config/sites.js** — the deduplicated site list (23 sites, all hand-
+  verified with a real `run()` — see "Site list" below; no more generic-
+  heuristic entries as of the 2026-09-13 cleanup).
+- **config/directories.js** — richer directory/profile-style entries (Idea
+  4/5); currently empty, see "Off-page automation extras" above for why.
 - **src/worker.js** — for one browser engine, loops through every site
-  serially: navigate, dismiss any cookie-consent banner, detect a real
-  on-screen CAPTCHA, run the site's `run()` (or the generic fallback),
+  serially: navigate, dismiss any cookie-consent banner and any other
+  popup/modal, detect a real on-screen CAPTCHA, run the site's `run()`,
   record the result.
 - **src/engine.js**:
   - `dismissCookieBanners` — fresh Playwright profiles have no
     accepted-cookies state, so consent banners (OneTrust, Cookiebot, etc.)
     render on first visit and can physically overlay the form. This
     best-effort-dismisses them before anything else touches the page.
+  - `dismissPopups` — the same idea for newsletter/login/exit-intent
+    modals, which are a different problem than a cookie banner (found live
+    on a site that stacked a login modal AND a Mailchimp signup modal on
+    top of its own ping form): tries Escape, known/likely close buttons,
+    common "no thanks"-style wording, then as a last resort hides any
+    still-visible full-screen dialog/backdrop directly.
   - `detectCaptcha` — checks for a CAPTCHA/bot-wall challenge that is
     actually rendered on screen. Deliberately does **not** treat the
     `g-recaptcha`/`h-captcha` CSS class alone as a signal: several sites put
     that class directly on their ordinary, always-visible submit button
     (that's how Google's "invisible" reCAPTCHA is wired up), so the class's
     mere presence doesn't mean a challenge is showing — only its iframe
-    actually appearing on screen does.
+    actually appearing on screen does. Note this only catches the
+    iframe/interstitial kind — a plain required "verify this number"
+    text field with no iframe (found live on one researched candidate) has
+    to be caught by hand and the site dropped, not automated around.
   - `typeLikeHuman` — some sites' JS frameworks only react to real keystroke
     events, not Playwright's `.fill()` (which sets the value directly and
     fires only a synthetic `input` event) — so every site types character by
     character instead.
-  - `genericSubmit` — the heuristic fallback for unverified sites.
-- **src/logger.js / src/report.js** — collect every attempt and write
-  `logs/run-<timestamp>.json` and `.html` with per-status and per-browser
-  summaries.
+  - `genericSubmit` — a heuristic fallback kept for any future unverified
+    entry; nothing in the current site list uses it.
+- **src/discovery.js / src/reliability.js / src/syndication.js /
+  src/transcripts.js / src/social.js** — the off-page automation extras;
+  see that section above for what each does.
+- **src/logger.js / src/report.js / src/mailer.js** — collect every
+  attempt plus the extras' results and write `logs/run-<timestamp>.json` /
+  `.html` (and the emailed summary) with per-status, per-browser, discovery,
+  reliability, syndication, and social-sharing sections.
 
 ## Site list
 
 Started from two URL lists provided over the course of building this
-project (27 ping/backlink tools, then 54 more legacy ping directories), with
-duplicates removed by normalized host+path, then 4 sites removed for having
-a CAPTCHA and 4 CAPTCHA-free replacements researched and added in their
-place (see below). A full headless test run against all 60 sites on
-2026-09-12 gave:
+project (27 ping/backlink tools, then 54 more legacy ping directories,
+peaking at 56 total), with duplicates removed by normalized host+path. Two
+cleanup passes since then, each backed by a real headless test run rather
+than guesswork, landed on the current 23:
 
-- **16 submitted** — form found, filled, and its submit action fired.
-- **44 failed** — mostly either a domain that no longer resolves (many of
-  the 2005-2010-era ping directories are gone after 15-20 years) or a page
-  that turned out to be a plain XML-RPC API endpoint
-  (`weblogUpdates.ping`-style, meant for blogging software to call, not a
-  browser) with no HTML form for the heuristic engine to find. Both surface
-  honestly as `failed` — that's expected, not a bug. Re-run
-  `node index.js --headless` any time to get a fresh count; some of these
-  may come back online or change shape.
-- **0 CAPTCHA hits** in that run, even with a broadened detector that also
-  checks for Akamai/PerimeterX/Imperva/DataDome/Arkose/GeeTest signatures
-  (not just reCAPTCHA/hCaptcha/Cloudflare).
+- **2026-09-12**: 4 sites removed for having a CAPTCHA, 4 CAPTCHA-free
+  replacements added (see "CAPTCHA-free replacements added" below).
+- **2026-09-13, pass 1**: the entire 38-site "legacy ping directory" block
+  (2005-2010 era) removed after a live run showed 36/38 dead (no DNS
+  resolution, or a bare XML-RPC endpoint with no browser-facing form) — the
+  2 genuine survivors were promoted with real selectors, one of which
+  (FeedShark) turned out to have an undetected CAPTCHA-equivalent (a
+  required plain-number "verify" field, no iframe) and was dropped too. 4
+  more long-standing entries turned out to be dead/parked/not-actually-a-
+  backlink-form and were removed. 28 new sites were researched and added,
+  each individually confirmed live (real submission, real success
+  response, zero CAPTCHA) — see `config/sites.js`'s own top-of-file comment
+  for the full rejected-candidate list.
+- **2026-09-13, pass 2**: a live `workflow_dispatch` run on GitHub's
+  `ubuntu-latest` runners exposed that several of pass 1's new sites —
+  all individually verified from a residential IP — are behind
+  datacenter/cloud-IP-specific bot detection invisible from home but very
+  real in CI: 17 came back CAPTCHA-walled or stuck in a self-redirect loop
+  on every single browser there. All were removed. A second live run on
+  the pruned 24-site list then measured a genuine **93.8% success rate**;
+  one more site that came back flaky across two separate runs (3/8
+  combined) was removed after that, landing on the current 23.
+
+Re-run `node index.js --headless` any time to get a fresh count against
+this list; the rolling site-reliability tracker (`src/reliability.js`, see
+above) is specifically there to catch the next site that quietly goes bad
+the same way, across runs rather than reacting to one noisy one.
 
 ### CAPTCHA/bot-wall sites removed
 

@@ -18,7 +18,72 @@ function statusColor(status) {
   return STATUS_COLORS[status] || '#555';
 }
 
-function writeHtmlReport(htmlPath, summary, results) {
+function renderEnrichmentHtml(enrichment) {
+  if (!enrichment) return '';
+  const { discovered, reliability, syndication, social } = enrichment;
+
+  const sitemapRows = (discovered.sitemapUrls || [])
+    .map((url) => `<li><a href="${escapeHtml(url)}">${escapeHtml(url)}</a></li>`)
+    .join('');
+  const videoRows = (discovered.videos || [])
+    .map((v) => `<li><a href="${escapeHtml(v.url)}">${escapeHtml(v.title)}</a></li>`)
+    .join('');
+  const discoveryErrorRows = (discovered.errors || [])
+    .map((e) => `<li style="color:#b8860b">${escapeHtml(e)}</li>`)
+    .join('');
+
+  const flaggedRows = (reliability && reliability.flagged.length
+    ? reliability.flagged
+        .map((f) => `<li>${escapeHtml(f.site)} — ${f.submitted}/${f.attempts} (${Math.round(f.rate * 100)}%) over its last ${f.attempts} attempts</li>`)
+        .join('')
+    : '<li>none</li>');
+
+  const syndicationPostedRows = (syndication && syndication.posted.length
+    ? syndication.posted
+        .map(
+          (p) =>
+            `<li>${escapeHtml(p.title)} (${escapeHtml(p.kind)}) — ${
+              p.devto ? `<a href="${escapeHtml(p.devto)}">Dev.to</a>` : ''
+            } ${p.hashnode ? `<a href="${escapeHtml(p.hashnode)}">Hashnode</a>` : ''}</li>`
+        )
+        .join('')
+    : '<li>none this run</li>');
+  const syndicationSkippedRows = (syndication && syndication.skipped.length
+    ? syndication.skipped.map((s) => `<li>${escapeHtml(s.kind)} ${escapeHtml(s.id || '')} — ${escapeHtml(s.reason)}</li>`).join('')
+    : '');
+  const syndicationErrorRows = (syndication && syndication.errors.length
+    ? syndication.errors.map((e) => `<li style="color:#c1121f">${escapeHtml(e.kind)} ${escapeHtml(e.ref)} — ${escapeHtml(e.message)}</li>`).join('')
+    : '');
+
+  const socialPostedRows = (social && social.posted.length
+    ? social.posted.map((p) => `<li>${escapeHtml(p.platform)}${p.url ? ` — <a href="${escapeHtml(p.url)}">${escapeHtml(p.url)}</a>` : ''}</li>`).join('')
+    : '<li>none this run</li>');
+  const socialErrorRows = (social && social.errors.length
+    ? social.errors.map((e) => `<li style="color:#c1121f">${escapeHtml(e.platform)} — ${escapeHtml(e.message)}</li>`).join('')
+    : '');
+
+  return `
+  <h2>Content discovery (sitemap + YouTube feed)</h2>
+  <p class="meta">Fresh URLs pulled in automatically this run and merged into the target pool.</p>
+  <ul>${discoveryErrorRows}</ul>
+  <h3>Sitemap pages found (${(discovered.sitemapUrls || []).length})</h3>
+  <ul>${sitemapRows || '<li>none</li>'}</ul>
+  <h3>Videos found (${(discovered.videos || []).length})</h3>
+  <ul>${videoRows || '<li>none</li>'}</ul>
+
+  <h2>Site reliability (rolling history)</h2>
+  <p class="meta">Sites flagged here have a rolling success rate under 50% across their last several runs — candidates to investigate or remove.</p>
+  <ul>${flaggedRows}</ul>
+
+  <h2>Content syndication (Dev.to / Hashnode)</h2>
+  <ul>${syndicationPostedRows}${syndicationSkippedRows}${syndicationErrorRows}</ul>
+
+  <h2>Social sharing</h2>
+  <ul>${socialPostedRows}${socialErrorRows}</ul>
+`;
+}
+
+function writeHtmlReport(htmlPath, summary, results, enrichment) {
   const rows = results
     .map(
       (r) => `
@@ -96,7 +161,7 @@ function writeHtmlReport(htmlPath, summary, results) {
 
   <h2>Summary by target link</h2>
   <ul>${targetBreakdownRows}</ul>
-
+  ${renderEnrichmentHtml(enrichment)}
   <h2>Full log</h2>
   <table>
     <thead>

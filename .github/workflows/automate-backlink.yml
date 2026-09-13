@@ -44,6 +44,21 @@ jobs:
       - name: Check out repo
         uses: actions/checkout@v4
 
+      # Each run starts from a fresh checkout, so without this the site
+      # reliability history (src/reliability.js) and the syndication
+      # already-posted ledger (src/syndication.js) would reset every time —
+      # restore-keys falls back to the most recent cache under this prefix
+      # since the exact run_id key never already exists.
+      - name: Restore reliability + syndication ledgers
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            logs/site-history.json
+            logs/syndicated.json
+          key: automation-ledgers-${{ github.run_id }}
+          restore-keys: |
+            automation-ledgers-
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -90,6 +105,20 @@ jobs:
           # (requires 2-Step Verification on that account). Leaving the
           # secret unset just skips the email; it doesn't fail the run.
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          # Content discovery (src/discovery.js — sitemap + YouTube feed) is
+          # on by default and needs no credentials. Everything below is
+          # independently a no-op until its own secret is set — see
+          # README.md for how to obtain each one; none are required for the
+          # core ping/backlink automation.
+          DEVTO_API_KEY: ${{ secrets.DEVTO_API_KEY }}
+          HASHNODE_TOKEN: ${{ secrets.HASHNODE_TOKEN }}
+          HASHNODE_PUBLICATION_ID: ${{ secrets.HASHNODE_PUBLICATION_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN }}
+          LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
+          LINKEDIN_ACTOR_URN: ${{ secrets.LINKEDIN_ACTOR_URN }}
+          FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
+          FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
         run: |
           # inputs.browsers only exists on a manual (workflow_dispatch) run —
           # it's empty on the schedule trigger, so default to the same four
@@ -100,6 +129,15 @@ jobs:
           ARGS="--headless --only=$BROWSERS"
           if [ -n "${{ inputs.limit }}" ]; then ARGS="$ARGS --limit=${{ inputs.limit }}"; fi
           node index.js $ARGS
+
+      - name: Save reliability + syndication ledgers
+        if: always() # keep whatever the run above wrote even if it exited non-zero
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            logs/site-history.json
+            logs/syndicated.json
+          key: automation-ledgers-${{ github.run_id }}
 
       - name: Upload run report
         if: always() # keep the report even if the run above exits non-zero

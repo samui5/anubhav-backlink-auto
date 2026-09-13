@@ -66,6 +66,11 @@ async function runBrowserWorker({ browserName, sites, settings, pickKeyword, pic
           url: target,
           keyword,
           category: settings.category,
+          // Only config/directories.js entries need this (richer forms —
+          // business name/category/description/email — than a plain
+          // ping/backlink-maker's URL + optional keyword); harmless for
+          // every config/sites.js entry, which never reads it.
+          business: settings.business,
           settings,
           label,
           clickAndHandleCaptcha: (p, selector) => clickAndHandleCaptcha(p, selector, ctx),

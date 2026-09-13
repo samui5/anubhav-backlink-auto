@@ -47,12 +47,52 @@ By target link:
 ${targetLines}`;
 }
 
+function enrichmentLines(enrichment) {
+  if (!enrichment) return '';
+  const { discovered, reliability, syndication, social } = enrichment;
+
+  const discoveryLines = [
+    `  sitemap pages found: ${discovered.sitemapUrls.length}`,
+    `  videos found: ${discovered.videos.length}`,
+    ...discovered.errors.map((e) => `  warning: ${e}`),
+  ].join('\n');
+
+  const flaggedLines = reliability.flagged.length
+    ? reliability.flagged.map((f) => `  ${f.site}: ${f.submitted}/${f.attempts} (${Math.round(f.rate * 100)}%)`).join('\n')
+    : '  none';
+
+  const syndicationLines = [
+    ...syndication.posted.map((p) => `  posted: ${p.title} (${p.kind}) -> ${p.devto || p.hashnode || ''}`),
+    ...syndication.skipped.map((s) => `  skipped: ${s.kind} ${s.id || ''} (${s.reason})`),
+    ...syndication.errors.map((e) => `  error: ${e.kind} ${e.ref} - ${e.message}`),
+  ].join('\n') || '  none this run';
+
+  const socialLines = [
+    ...social.posted.map((p) => `  ${p.platform}: ${p.url || 'posted'}`),
+    ...social.errors.map((e) => `  ${e.platform} error: ${e.message}`),
+  ].join('\n') || '  none this run';
+
+  return `
+
+Content discovery:
+${discoveryLines}
+
+Site reliability (rolling, flagged = <50% success over several runs):
+${flaggedLines}
+
+Content syndication (Dev.to / Hashnode):
+${syndicationLines}
+
+Social sharing:
+${socialLines}`;
+}
+
 // Sends the finished run's HTML + JSON reports as attachments, with a plain
 // summary in the body. Never throws — a mail failure (bad password, no
 // network, quota) is logged and swallowed so it can't take down a run that
 // otherwise completed fine; the report files on disk are still the source
 // of truth.
-async function sendReportEmail({ settings, summary, htmlPath, jsonPath }) {
+async function sendReportEmail({ settings, summary, htmlPath, jsonPath, enrichment }) {
   const { email } = settings;
 
   if (!email.enabled) {
@@ -75,7 +115,7 @@ async function sendReportEmail({ settings, summary, htmlPath, jsonPath }) {
       from: email.from,
       to: email.to,
       subject,
-      text: summaryLines(summary),
+      text: summaryLines(summary) + enrichmentLines(enrichment),
       attachments: [
         { filename: 'report.html', path: htmlPath },
         { filename: 'report.json', path: jsonPath },
