@@ -1,22 +1,23 @@
 // Each entry is one backlink/ping site.
 //
 // `verified: true` means the selectors below were checked against the live
-// site on 2026-09-12 and a `run()` was written for its actual form.
-// `verified: false` entries have no site-specific `run()` and fall back to
-// the heuristic engine in src/engine.js (it hunts for a URL-ish input, an
-// optional keyword-ish input, and a submit-ish button). Heuristics are
-// inherently best-effort: these sites redesign their pages often, so expect
-// some of them to fail or need a selector fix — check the log report.
+// site and a `run()` was written for its actual form. `verified: false`
+// entries have no site-specific `run()` and fall back to the heuristic
+// engine in src/engine.js (it hunts for a URL-ish input, an optional
+// keyword-ish input, and a submit-ish button). Heuristics are inherently
+// best-effort: these sites redesign their pages often, so expect some of
+// them to fail or need a selector fix — check the log report.
 //
 // Policy: sites confirmed to sit behind a CAPTCHA or bot wall (reCAPTCHA,
-// hCaptcha, Cloudflare, etc) are not kept here at all — their entries are
-// deleted outright rather than marked/worked around. SmallSEOTools, Pingler,
-// SearchEngineReports, and DupliChecker were removed on 2026-09-12 for
-// exactly that reason (DupliChecker sits behind Cloudflare, which throws an
-// "Attention Required" challenge specifically at automated/headless
-// browsers — confirmed via a live headless test run). `site.protected`
-// still exists as plumbing in src/worker.js for any future site that turns
-// out to need it, but nothing here currently uses it.
+// hCaptcha, Cloudflare, an inline "Image Verification"/math-question field,
+// etc) are not kept here at all — their entries are deleted outright rather
+// than marked/worked around. SmallSEOTools, Pingler, SearchEngineReports,
+// and DupliChecker were removed on 2026-09-12 for exactly that reason
+// (DupliChecker sits behind Cloudflare, which throws an "Attention
+// Required" challenge specifically at automated/headless browsers —
+// confirmed via a live headless test run). `site.protected` still exists as
+// plumbing in src/worker.js for any future site that turns out to need it,
+// but nothing here currently uses it.
 //
 // Same policy for confirmed-dead sites: verified via direct curl (not just a
 // CI run, since a CI-only failure could be an IP block rather than a dead
@@ -26,6 +27,60 @@
 // livescore widget, no URL submission left), and PingMyUrl Social
 // (pingmyurl.com/social returns an empty page, no form at all) were removed
 // outright rather than left to fail every run.
+//
+// --- 2026-09-13 cleanup + expansion ------------------------------------
+// A live headless run (chromium, 56 sites) showed the entire "legacy
+// ping-service list" block below this one — 38 sites, mostly 2005-2010 era
+// blog-ping directories — failing 36/38 (dead domains or XML-RPC endpoints
+// with no browser-facing form; that's expected and honest, not a bug, per
+// the original note on that block). The two survivors (BulkPing, FeedShark)
+// were individually re-checked: BulkPing is a live, modern, no-captcha site
+// and was promoted into the main list below with a real `run()`; FeedShark
+// was found to have a required numeric "verify" field (a plain math/human
+// check with no iframe — the kind src/engine.js's iframe-based
+// detectCaptcha() can't see) and was dropped under the CAPTCHA policy
+// above. The rest of that dead block was deleted outright.
+//
+// Also dropped from the previously-"working" set: SEOSpaceship Tools (dead —
+// connection timeout, confirmed via curl too), PingSitemap (resolves but is
+// a parked/placeholder page with no real form), FeedBurner Ping (Google
+// retired this endpoint years ago, 404s), and Free Web Submission (UK) /
+// ExciteSubmit (neither is actually a backlink/ping submission — the first
+// is an AWeber mailing-list opt-in, the second's only working field is an
+// IndexNow-key-gated URL analyzer — so counting either as a "submission"
+// would be misleading even though the generic engine can technically fill
+// them without erroring).
+//
+// Pingdom Tools, PingMyUrls, PingFarm, and Free-Backlinks.net Ping URL were
+// upgraded from generic-heuristic (verified: false) to real hand-written
+// `run()`s after confirming their actual selectors live.
+//
+// 28 new sites were researched and added, all individually live-tested
+// headless with a real submission (not just a page load) to confirm a
+// genuine success response (e.g. "Thanks for the ping." / a backlink-check
+// results table) with zero CAPTCHA of any kind. Most belong to one of two
+// widely-resold "free SEO tools" script families that show up on dozens of
+// independent agency domains: an "online ping website tool" (fields
+// #myurl/#blogNameData/#myBlogUpdateUrlData/#myBlogRSSFeedUrlData, button
+// #checkButton) and a "backlink maker" (just #myurl + #checkButton, returns
+// a table of authority sites that now reference the submitted URL). Many
+// candidate domains running the same two scripts were checked and rejected
+// for having a bolted-on CAPTCHA (7boats, smallseo.tools, smartseotools.org,
+// smallseotools.co.uk all show an "Image Verification" field on this exact
+// template), being dead/parked/hijacked (superseoplus.com, digitalqueen.co.uk,
+// coolseotools.com, free-seo-tools.org — the last now squatted by a gambling
+// spam page), or requiring an account/API key/lead-gen form instead of a
+// plain submission (w3era, vefogix.com, pingoat.com, the IndexNow-key tools,
+// easyprotools.com's "backlink generator" which just opens 100+ third-party
+// tool tabs rather than submitting anywhere itself).
+//
+// One real finding from that research: smallseo.tools threw up a login
+// modal AND a Mailchimp signup modal stacked on top of its form, which is
+// exactly the "extra popup, not a captcha" case — see dismissPopups() in
+// src/engine.js, added specifically for this and now run on every site
+// before dismissCookieBanners's cousin. (smallseo.tools itself was still
+// excluded afterward — once the popups were out of the way, it turned out
+// to also have the same Image Verification field as the sites above.)
 
 const sites = [
   {
@@ -41,7 +96,12 @@ const sites = [
   {
     name: 'Pingdom Tools',
     url: 'https://tools.pingdom.com/',
-    verified: false,
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, 'input[placeholder="www.example.com"]', ctx.url);
+      await page.click('input.test-button');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
   },
   {
     name: 'PrepostSEO Ping Multiple URLs',
@@ -67,8 +127,27 @@ const sites = [
       await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
     },
   },
-  { name: 'PingMyUrls', url: 'https://pingmyurls.com/', verified: false },
-  { name: 'PingFarm', url: 'http://pingfarm.com/', verified: false },
+  {
+    name: 'PingMyUrls',
+    url: 'https://pingmyurls.com/',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#fMain #furl', ctx.url);
+      await page.click('#fMain input[name="button"]');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'PingFarm',
+    url: 'http://pingfarm.com/',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, 'textarea[name="urls"]', ctx.url);
+      await ctx.type(page, 'input[name="title"]', ctx.keyword);
+      await page.click('input[value="MASS PING!"]');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
   {
     name: 'Ping-O-Matic',
     url: 'http://pingomatic.com/',
@@ -82,21 +161,16 @@ const sites = [
       await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
     },
   },
-  { name: 'SEOSpaceship Tools', url: 'https://www.seospaceship.com/tools/', verified: false },
   {
-    name: 'Free Web Submission (UK)',
-    url: 'http://www.free-web-submission.co.uk/index9.html',
-    verified: false,
-    note: "Its only form field is an AWeber mailing-list opt-in ('custom Website Address' + required email) rather than a real backlink/ping submission — the generic engine correctly finds no URL-like field. Kept for completeness.",
-  },
-  { name: 'ExciteSubmit', url: 'https://excitesubmit.com/', verified: false },
-  { name: 'Free-Backlinks.net Ping URL', url: 'http://free-backlinks.net/ping-my-url.html', verified: false },
-  { name: 'PingSitemap', url: 'http://pingsitemap.com/', verified: false },
-  {
-    name: 'FeedBurner Ping',
-    url: 'https://feedburner.google.com/fb/a/ping',
-    verified: false,
-    note: 'Google retired most of FeedBurner years ago; this endpoint is likely dead. Kept for completeness.',
+    name: 'Free-Backlinks.net Ping URL',
+    url: 'http://free-backlinks.net/ping-my-url.html',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, 'input[name="url"]', ctx.url);
+      await ctx.type(page, 'input[name="title"]', ctx.keyword);
+      await page.click('input[value="Start Pinging"]');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
   },
   {
     name: 'PrepostSEO Backlinks Maker',
@@ -105,6 +179,17 @@ const sites = [
     async run(page, ctx) {
       await ctx.type(page, '#inputURL', ctx.url);
       await page.click('#checkBrokenLinks');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'BulkPing',
+    url: 'http://www.bulkping.com/',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#label', ctx.keyword);
+      await ctx.type(page, '#urls', ctx.url);
+      await page.click('.submit-btn');
       await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
     },
   },
@@ -170,53 +255,330 @@ const sites = [
     },
   },
 
-  // --- Legacy ping-service list added 2026-09-12 -----------------------
-  // Mostly old (2005-2010 era) blog-ping directories. Several are plain
-  // XML-RPC endpoints (weblogUpdates.ping-style APIs meant to be called by
-  // blogging software, not a browser) rather than pages with a form, and a
-  // number of these domains no longer resolve at all after this many years.
-  // Both cases surface honestly as `failed` in the report (no form found /
-  // navigation error) via the generic engine below — that's expected, not a
-  // bug. None of these were verified live; fix a selector here if one of
-  // them turns out to have a real form and keeps failing.
-  { name: 'Google Blog Search Ping', url: 'http://www.blogsearch.google.com/ping', verified: false },
-  { name: 'AddUrl.nu', url: 'http://addurl.nu/', verified: false },
-  { name: 'FeedBurner Ping (legacy)', url: 'http://ping.feedburner.com', verified: false },
-  { name: 'PingMyBlog', url: 'http://pingmyblog.com/', verified: false },
-  { name: 'GooglePing', url: 'http://googleping.com', verified: false },
-  { name: 'BacklinkPing', url: 'http://www.backlinkping.com', verified: false },
-  { name: 'IndexKings', url: 'http://indexkings.com', verified: false },
-  { name: 'PingBomb', url: 'http://pingbomb.com', verified: false },
-  { name: 'FeedShark', url: 'http://feedshark.brainbliss.com', verified: false },
-  { name: 'Twingly Ping', url: 'http://twingly.com/ping', verified: false },
-  { name: 'Ping.in', url: 'http://ping.in', verified: false },
-  { name: 'Weblogs.com', url: 'http://www.weblogs.com/', verified: false },
-  { name: 'IceRocket', url: 'http://icerocket.com/', verified: false },
-  { name: 'Auto-Ping', url: 'http://auto-ping.com/', verified: false },
-  { name: 'MyPageRank Ping Service', url: 'http://mypagerank.net/service_pingservice_index', verified: false },
-  { name: 'iPings', url: 'http://ipings.com', verified: false },
-  { name: 'Blo.gs', url: 'http://blo.gs/', verified: false },
-  { name: 'AutoPinger', url: 'http://www.autopinger.com/', verified: false },
-  { name: 'Bitacoras', url: 'http://bitacoras.com/', verified: false },
-  { name: 'GeoURL Ping', url: 'http://geourl.org/ping', verified: false },
-  { name: 'BlogBuzzer', url: 'http://blogbuzzer.com', verified: false },
-  { name: 'Pingerati', url: 'http://www.pingerati.net', verified: false },
-  { name: 'BulkFeeds RPC', url: 'http://bulkfeeds.net/rpc', verified: false },
-  { name: 'Pingates', url: 'http://pingates.com', verified: false },
-  { name: 'BlogMatcher', url: 'http://blogmatcher.com', verified: false },
-  { name: 'Syncr', url: 'http://syncr.com', verified: false },
-  { name: 'PingGator', url: 'http://pinggator.com', verified: false },
-  { name: 'Blogg.de XML-RPC', url: 'http://xmlrpc.blogg.de', verified: false },
-  { name: 'Blo.gs Ping Endpoint', url: 'http://ping.blo.gs', verified: false },
-  { name: 'BulkPing', url: 'http://www.bulkping.com/', verified: false },
-  { name: 'BlogSnow Ping', url: 'http://www.blogsnow.com/ping', verified: false },
-  { name: 'Feedster Ping', url: 'http://api.feedster.com/ping', verified: false },
-  { name: 'BlogShares RPC', url: 'http://www.blogshares.com/rpc.php', verified: false },
-  { name: 'AllPodcasts', url: 'http://www.allpodcasts.com/', verified: false },
-  { name: 'Moreover Ping', url: 'http://api.moreover.com/ping', verified: false },
-  { name: 'Bitacoras Ping Endpoint', url: 'http://ping.bitacoras.com', verified: false },
-  { name: 'Amagle Ping', url: 'http://ping.amagle.com/', verified: false },
-  { name: 'BlogPingTool', url: 'http://www.blogpingtool.com', verified: false },
+  // --- 30 new sites added 2026-09-13 -------------------------------------
+  // See the file-level comment above for how these were sourced/verified
+  // and what was rejected along the way. The "online ping website tool" and
+  // "backlink maker" run()s below are deliberately identical in shape to
+  // Naklov/SEOQueen and PrepostSEO Backlinks Maker above — same underlying
+  // script, different domain — copied per-site rather than factored into a
+  // shared helper to match this file's existing convention of one
+  // self-contained entry per site.
+  {
+    name: 'SEO Tool Checkers Online Ping Website Tool',
+    url: 'https://seotoolcheckers.com/online-ping-website-tool',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await ctx.type(page, '#blogNameData', ctx.keyword);
+      await ctx.type(page, '#myBlogUpdateUrlData', ctx.url);
+      await ctx.type(page, '#myBlogRSSFeedUrlData', `${ctx.url}/feed`);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'SEO Tool Checkers Backlink Maker',
+    url: 'https://seotoolcheckers.com/backlink-maker',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'Next Big Technology Online Ping Website Tool',
+    url: 'https://nextbigtechnology.com/seo-check/online-ping-website-tool',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await ctx.type(page, '#blogNameData', ctx.keyword);
+      await ctx.type(page, '#myBlogUpdateUrlData', ctx.url);
+      await ctx.type(page, '#myBlogRSSFeedUrlData', `${ctx.url}/feed`);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'Next Big Technology Backlink Maker',
+    url: 'https://nextbigtechnology.com/seo-check/backlink-maker',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'SEO Wagon Online Ping Website Tool',
+    url: 'https://seowagon.com/online-ping-website-tool',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await ctx.type(page, '#blogNameData', ctx.keyword);
+      await ctx.type(page, '#myBlogUpdateUrlData', ctx.url);
+      await ctx.type(page, '#myBlogRSSFeedUrlData', `${ctx.url}/feed`);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'SEO Wagon Backlink Maker',
+    url: 'https://seowagon.com/backlink-maker',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'A to Z SEO Tools (wongcw) Online Ping Website Tool',
+    url: 'https://seotools.wongcw.com/online-ping-website-tool',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await ctx.type(page, '#blogNameData', ctx.keyword);
+      await ctx.type(page, '#myBlogUpdateUrlData', ctx.url);
+      await ctx.type(page, '#myBlogRSSFeedUrlData', `${ctx.url}/feed`);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'A to Z SEO Tools (wongcw) Backlink Maker',
+    url: 'https://seotools.wongcw.com/backlink-maker',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'King of SEO Tools Online Ping Website Tool',
+    url: 'https://kingofseotools.com/online-ping-website-checker',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await ctx.type(page, '#blogNameData', ctx.keyword);
+      await ctx.type(page, '#myBlogUpdateUrlData', ctx.url);
+      await ctx.type(page, '#myBlogRSSFeedUrlData', `${ctx.url}/feed`);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'King of SEO Tools Backlink Maker',
+    url: 'https://kingofseotools.com/backlink-maker',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'SEO Tools Centre Online Ping Website Tool',
+    url: 'https://seotoolscentre.com/online-ping-website-tool',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await ctx.type(page, '#blogNameData', ctx.keyword);
+      await ctx.type(page, '#myBlogUpdateUrlData', ctx.url);
+      await ctx.type(page, '#myBlogRSSFeedUrlData', `${ctx.url}/feed`);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'Simplified SEO Tools Online Ping Website Tool',
+    url: 'https://simplifiedseotools.com/online-ping-website-tool',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await ctx.type(page, '#blogNameData', ctx.keyword);
+      await ctx.type(page, '#myBlogUpdateUrlData', ctx.url);
+      await ctx.type(page, '#myBlogRSSFeedUrlData', `${ctx.url}/feed`);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'Simplified SEO Tools Backlink Maker',
+    url: 'https://simplifiedseotools.com/backlink-maker',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'CoderDuck Online Ping Website Tool',
+    url: 'https://www.coderduck.com/online-ping-website-tool',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await ctx.type(page, '#blogNameData', ctx.keyword);
+      await ctx.type(page, '#myBlogUpdateUrlData', ctx.url);
+      await ctx.type(page, '#myBlogRSSFeedUrlData', `${ctx.url}/feed`);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'CoderDuck Backlink Maker',
+    url: 'https://www.coderduck.com/backlink-maker',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'SEOToolr Backlink Maker',
+    url: 'https://www.seotoolr.com/backlink-maker',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'ToolsZoo Online Ping Website Tool',
+    url: 'https://www.toolszoo.com/online-ping-website-tool',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await ctx.type(page, '#blogNameData', ctx.keyword);
+      await ctx.type(page, '#myBlogUpdateUrlData', ctx.url);
+      await ctx.type(page, '#myBlogRSSFeedUrlData', `${ctx.url}/feed`);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'ToolsZoo Backlink Maker',
+    url: 'https://www.toolszoo.com/backlink-maker',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'Quick Rank Tools Online Ping Website Tool',
+    url: 'https://www.quickranktools.com/online-ping-website-tool',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await ctx.type(page, '#blogNameData', ctx.keyword);
+      await ctx.type(page, '#myBlogUpdateUrlData', ctx.url);
+      await ctx.type(page, '#myBlogRSSFeedUrlData', `${ctx.url}/feed`);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'Quick Rank Tools Backlink Maker',
+    url: 'https://www.quickranktools.com/backlink-maker',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'Small-SEO-Tool.com Online Ping Website Tool',
+    url: 'https://www.small-seo-tool.com/online-ping-website-tool',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await ctx.type(page, '#blogNameData', ctx.keyword);
+      await ctx.type(page, '#myBlogUpdateUrlData', ctx.url);
+      await ctx.type(page, '#myBlogRSSFeedUrlData', `${ctx.url}/feed`);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'Small-SEO-Tool.com Backlink Maker',
+    url: 'https://www.small-seo-tool.com/backlink-maker',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'NimTools Backlink Maker',
+    url: 'https://nimtools.com/backlink-maker',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'Digital Web Services Backlink Maker',
+    url: 'https://www.digital-web-services.com/marketing-seo-tools/backlink-maker',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'SEO Magnifier Backlinks Maker',
+    url: 'https://seomagnifier.com/backlinks-maker',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'PingMyLinks SEO Tools Online Ping Website Tool',
+    url: 'https://www.pingmylinks.com/seo-tools/online-ping-website-tool',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#myurl', ctx.url);
+      await ctx.type(page, '#blogNameData', ctx.keyword);
+      await ctx.type(page, '#myBlogUpdateUrlData', ctx.url);
+      await ctx.type(page, '#myBlogRSSFeedUrlData', `${ctx.url}/feed`);
+      await page.click('#checkButton');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'Bright SEO Tools Online Ping Website Tool',
+    url: 'https://brightseotools.com/online-ping-website-tool',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#domain', ctx.url);
+      await page.click('button:has-text("Check Ping")');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
+  {
+    name: 'Wormly Remote Ping Test',
+    url: 'https://www.wormly.com/test-remote-ping',
+    verified: true,
+    async run(page, ctx) {
+      await ctx.type(page, '#sensor-1-1-host', ctx.url.replace(/^https?:\/\//, '').replace(/\/$/, ''));
+      await page.click('#cs_test');
+      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
+    },
+  },
 ];
 
 module.exports = sites;

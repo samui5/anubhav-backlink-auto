@@ -5,6 +5,7 @@ const {
   clickAndHandleCaptcha,
   typeLikeHuman,
   dismissCookieBanners,
+  dismissPopups,
   genericSubmit,
   CaptchaSkipped,
 } = require('./engine');
@@ -54,6 +55,7 @@ async function runBrowserWorker({ browserName, sites, settings, pickKeyword, pic
     try {
       await page.goto(site.url, { waitUntil: 'domcontentloaded' });
       await dismissCookieBanners(page);
+      await dismissPopups(page);
 
       if (site.protected === 'cloudflare') {
         const captcha = await detectCaptcha(page);

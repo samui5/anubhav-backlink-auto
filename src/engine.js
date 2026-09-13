@@ -160,6 +160,10 @@ const COOKIE_BANNER_SELECTORS = [
   '#CybotCookiebotDialogBodyButtonAccept',
   '.CybotCookiebotDialogBodyButton',
   '#didomi-notice-agree-button',
+  // cookieconsent (osano/insites) open-source library
+  '.cc-window .cc-btn.cc-dismiss',
+  '.cc-window .cc-btn.cc-allow',
+  '.cc-compliance .cc-btn',
   'button[aria-label="Agree" i]',
   'button[aria-label="Accept" i]',
   'button[aria-label="Accept all" i]',
@@ -208,6 +212,92 @@ async function dismissCookieBannerByText(page) {
       return false;
     }, { source: COOKIE_BANNER_TEXT_PATTERN.source, flags: COOKIE_BANNER_TEXT_PATTERN.flags })
     .catch(() => false);
+}
+
+// Separate from cookie banners: newsletter/exit-intent/login-wall modals
+// (Mailchimp popups, "Sign up free" gates, generic Bootstrap/fancybox
+// dialogs) that some sites throw up on load and that physically overlay the
+// form, intercepting Playwright's click even though the underlying element
+// reads as visible+enabled (this is what broke smallseo.tools — a login
+// modal AND a Mailchimp signup modal both sat on top of the ping form's
+// Submit button). Best-effort: try Escape, then known/likely close buttons,
+// then as a last resort hide any full-screen dialog overlay directly so it
+// can't keep intercepting clicks. Never throws.
+const POPUP_CLOSE_SELECTORS = [
+  '.modal.show .close',
+  '.modal.in .close',
+  '[role="dialog"] .close',
+  '[role="dialog"] button[aria-label*="close" i]',
+  '.fancybox-close-small',
+  '.fancybox-close',
+  '.mc-closeModal',
+  'button[aria-label*="close" i]',
+  'button[title*="close" i]',
+  'a[aria-label*="close" i]',
+  '.popup-close',
+  '.popup__close',
+];
+
+const POPUP_DISMISS_TEXT_PATTERN =
+  /^(no,? thanks|not now|maybe later|skip|close|×|✕|✖|dismiss|continue without|remind me later)$/i;
+
+async function dismissPopups(page) {
+  await page.keyboard.press('Escape').catch(() => {});
+
+  for (const selector of POPUP_CLOSE_SELECTORS) {
+    const locator = page.locator(selector).first();
+    if (await locator.isVisible({ timeout: 500 }).catch(() => false)) {
+      await locator.click({ timeout: 1500 }).catch(() => {});
+      await page.waitForTimeout(200);
+    }
+  }
+
+  await page
+    .evaluate((source) => {
+      const re = new RegExp(source, 'i');
+      const candidates = document.querySelectorAll('button, a, [role="button"], span');
+      for (const el of candidates) {
+        const text = (el.textContent || '').trim();
+        if (text.length > 0 && text.length < 30 && re.test(text)) {
+          const rect = el.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            el.click();
+            return true;
+          }
+        }
+      }
+      return false;
+    }, POPUP_DISMISS_TEXT_PATTERN.source)
+    .catch(() => false);
+  await page.waitForTimeout(200);
+
+  // Last resort: any still-visible full-screen dialog/overlay left standing
+  // (no recognizable close control) gets hidden directly so it stops
+  // intercepting clicks on the real form underneath.
+  await page
+    .evaluate(() => {
+      const selectors = [
+        '[role="dialog"]',
+        '.modal.show',
+        '.modal.in',
+        '.modal-backdrop',
+        '[class*="modal-overlay" i]',
+        '[class*="modalOverlay" i]',
+        '[id*="popup" i][style*="fixed"]',
+      ];
+      for (const sel of selectors) {
+        for (const el of document.querySelectorAll(sel)) {
+          const rect = el.getBoundingClientRect();
+          const style = window.getComputedStyle(el);
+          const coversScreen =
+            rect.width > window.innerWidth * 0.5 && rect.height > window.innerHeight * 0.3;
+          if (coversScreen && style.display !== 'none' && parseFloat(style.opacity || '1') > 0) {
+            el.style.display = 'none';
+          }
+        }
+      }
+    })
+    .catch(() => {});
 }
 
 class CaptchaSkipped extends Error {
@@ -295,6 +385,7 @@ module.exports = {
   clickAndHandleCaptcha,
   typeLikeHuman,
   dismissCookieBanners,
+  dismissPopups,
   genericSubmit,
   CaptchaSkipped,
 };
