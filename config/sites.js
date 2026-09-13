@@ -105,6 +105,13 @@
 // Digital Web Services Backlink Maker (3/4 in that run), and Wormly — all
 // 4/4 or 3/4 clean in the same CI run, so evidently not on whatever
 // IP-reputation list caught the rest.
+//
+// A second live workflow_dispatch run (24 sites x 4 browsers) then
+// confirmed a 93.8% overall success rate — but also caught Digital Web
+// Services Backlink Maker (kept above at 3/4 after the first run) failing
+// 0/4 this time on a plain page.goto timeout, i.e. just a slow/flaky server
+// rather than a bot wall. 3/8 correct across the two runs combined isn't
+// good enough odds for an unattended site — removed.
 
 const sites = [
   {
@@ -373,16 +380,6 @@ const sites = [
   {
     name: 'Quick Rank Tools Backlink Maker',
     url: 'https://www.quickranktools.com/backlink-maker',
-    verified: true,
-    async run(page, ctx) {
-      await ctx.type(page, '#myurl', ctx.url);
-      await page.click('#checkButton');
-      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
-    },
-  },
-  {
-    name: 'Digital Web Services Backlink Maker',
-    url: 'https://www.digital-web-services.com/marketing-seo-tools/backlink-maker',
     verified: true,
     async run(page, ctx) {
       await ctx.type(page, '#myurl', ctx.url);
