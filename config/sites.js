@@ -55,24 +55,25 @@
 // upgraded from generic-heuristic (verified: false) to real hand-written
 // `run()`s after confirming their actual selectors live.
 //
-// 28 new sites were researched and added, all individually live-tested
-// headless with a real submission (not just a page load) to confirm a
-// genuine success response (e.g. "Thanks for the ping." / a backlink-check
-// results table) with zero CAPTCHA of any kind. Most belong to one of two
-// widely-resold "free SEO tools" script families that show up on dozens of
-// independent agency domains: an "online ping website tool" (fields
-// #myurl/#blogNameData/#myBlogUpdateUrlData/#myBlogRSSFeedUrlData, button
-// #checkButton) and a "backlink maker" (just #myurl + #checkButton, returns
-// a table of authority sites that now reference the submitted URL). Many
-// candidate domains running the same two scripts were checked and rejected
-// for having a bolted-on CAPTCHA (7boats, smallseo.tools, smartseotools.org,
-// smallseotools.co.uk all show an "Image Verification" field on this exact
-// template), being dead/parked/hijacked (superseoplus.com, digitalqueen.co.uk,
-// coolseotools.com, free-seo-tools.org — the last now squatted by a gambling
-// spam page), or requiring an account/API key/lead-gen form instead of a
-// plain submission (w3era, vefogix.com, pingoat.com, the IndexNow-key tools,
-// easyprotools.com's "backlink generator" which just opens 100+ third-party
-// tool tabs rather than submitting anywhere itself).
+// 28 new sites were initially researched and added, each individually
+// live-tested headless (from a residential IP) with a real submission (not
+// just a page load) to confirm a genuine success response (e.g. "Thanks for
+// the ping." / a backlink-check results table) with zero CAPTCHA. Most
+// belong to one of two widely-resold "free SEO tools" script families that
+// show up on dozens of independent agency domains: an "online ping website
+// tool" (fields #myurl/#blogNameData/#myBlogUpdateUrlData/#myBlogRSSFeedUrlData,
+// button #checkButton) and a "backlink maker" (just #myurl + #checkButton,
+// returns a table of authority sites that now reference the submitted URL).
+// Many candidate domains running the same two scripts were checked and
+// rejected for having a bolted-on CAPTCHA (7boats, smallseo.tools,
+// smartseotools.org, smallseotools.co.uk all show an "Image Verification"
+// field on this exact template), being dead/parked/hijacked
+// (superseoplus.com, digitalqueen.co.uk, coolseotools.com, free-seo-tools.org
+// — the last now squatted by a gambling spam page), or requiring an
+// account/API key/lead-gen form instead of a plain submission (w3era,
+// vefogix.com, pingoat.com, the IndexNow-key tools, easyprotools.com's
+// "backlink generator" which just opens 100+ third-party tool tabs rather
+// than submitting anywhere itself).
 //
 // One real finding from that research: smallseo.tools threw up a login
 // modal AND a Mailchimp signup modal stacked on top of its form, which is
@@ -81,6 +82,29 @@
 // before dismissCookieBanners's cousin. (smallseo.tools itself was still
 // excluded afterward — once the popups were out of the way, it turned out
 // to also have the same Image Verification field as the sites above.)
+//
+// --- 2026-09-13 second pass: pruned after a real GitHub Actions run -----
+// The first pass above was all verified from one residential IP, which
+// undersells a real failure mode: several of these free-tools domains sit
+// behind bot-detection (Cloudflare or similar) tuned to challenge
+// datacenter/cloud IP ranges specifically — invisible from a home network,
+// but a live workflow_dispatch run on GitHub's ubuntu-latest runners (4
+// browsers x 42 sites) showed 17 of the newly-added sites failing or
+// captcha-walled on literally every browser: SEO Tool Checkers, CoderDuck,
+// ToolsZoo, and Small-SEO-Tool.com (both pages each) plus SEOToolr Backlink
+// Maker all came back skipped-captcha on all 4 browsers in CI despite
+// having been captcha-free from home; King of SEO Tools (both pages),
+// BulkPing, and A to Z SEO Tools/wongcw (both pages) all hung in a
+// self-redirect navigation loop on every browser in CI (wongcw specifically
+// turned out to now redirect straight to a login page — likely rate-limited
+// after this same research's repeated manual hits); SEO Magnifier Backlinks
+// Maker, NimTools Backlink Maker, PingMyLinks SEO Tools' ping page, and
+// Bright SEO Tools all failed on 3-4 of the 4 browsers. All of those were
+// removed. Kept: Next Big Technology, SEO Wagon, Simplified SEO Tools, and
+// Quick Rank Tools (both pages each), plus SEO Tools Centre's ping page,
+// Digital Web Services Backlink Maker (3/4 in that run), and Wormly — all
+// 4/4 or 3/4 clean in the same CI run, so evidently not on whatever
+// IP-reputation list caught the rest.
 
 const sites = [
   {
@@ -182,18 +206,6 @@ const sites = [
       await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
     },
   },
-  {
-    name: 'BulkPing',
-    url: 'http://www.bulkping.com/',
-    verified: true,
-    async run(page, ctx) {
-      await ctx.type(page, '#label', ctx.keyword);
-      await ctx.type(page, '#urls', ctx.url);
-      await page.click('.submit-btn');
-      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
-    },
-  },
-
   // --- No-CAPTCHA replacements added 2026-09-12 -------------------------
   // Sourced by web research + live verification (filled the real form and
   // confirmed a genuine "Thanks for the ping." / "OK" success response with
@@ -264,29 +276,6 @@ const sites = [
   // shared helper to match this file's existing convention of one
   // self-contained entry per site.
   {
-    name: 'SEO Tool Checkers Online Ping Website Tool',
-    url: 'https://seotoolcheckers.com/online-ping-website-tool',
-    verified: true,
-    async run(page, ctx) {
-      await ctx.type(page, '#myurl', ctx.url);
-      await ctx.type(page, '#blogNameData', ctx.keyword);
-      await ctx.type(page, '#myBlogUpdateUrlData', ctx.url);
-      await ctx.type(page, '#myBlogRSSFeedUrlData', `${ctx.url}/feed`);
-      await page.click('#checkButton');
-      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
-    },
-  },
-  {
-    name: 'SEO Tool Checkers Backlink Maker',
-    url: 'https://seotoolcheckers.com/backlink-maker',
-    verified: true,
-    async run(page, ctx) {
-      await ctx.type(page, '#myurl', ctx.url);
-      await page.click('#checkButton');
-      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
-    },
-  },
-  {
     name: 'Next Big Technology Online Ping Website Tool',
     url: 'https://nextbigtechnology.com/seo-check/online-ping-website-tool',
     verified: true,
@@ -333,52 +322,6 @@ const sites = [
     },
   },
   {
-    name: 'A to Z SEO Tools (wongcw) Online Ping Website Tool',
-    url: 'https://seotools.wongcw.com/online-ping-website-tool',
-    verified: true,
-    async run(page, ctx) {
-      await ctx.type(page, '#myurl', ctx.url);
-      await ctx.type(page, '#blogNameData', ctx.keyword);
-      await ctx.type(page, '#myBlogUpdateUrlData', ctx.url);
-      await ctx.type(page, '#myBlogRSSFeedUrlData', `${ctx.url}/feed`);
-      await page.click('#checkButton');
-      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
-    },
-  },
-  {
-    name: 'A to Z SEO Tools (wongcw) Backlink Maker',
-    url: 'https://seotools.wongcw.com/backlink-maker',
-    verified: true,
-    async run(page, ctx) {
-      await ctx.type(page, '#myurl', ctx.url);
-      await page.click('#checkButton');
-      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
-    },
-  },
-  {
-    name: 'King of SEO Tools Online Ping Website Tool',
-    url: 'https://kingofseotools.com/online-ping-website-checker',
-    verified: true,
-    async run(page, ctx) {
-      await ctx.type(page, '#myurl', ctx.url);
-      await ctx.type(page, '#blogNameData', ctx.keyword);
-      await ctx.type(page, '#myBlogUpdateUrlData', ctx.url);
-      await ctx.type(page, '#myBlogRSSFeedUrlData', `${ctx.url}/feed`);
-      await page.click('#checkButton');
-      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
-    },
-  },
-  {
-    name: 'King of SEO Tools Backlink Maker',
-    url: 'https://kingofseotools.com/backlink-maker',
-    verified: true,
-    async run(page, ctx) {
-      await ctx.type(page, '#myurl', ctx.url);
-      await page.click('#checkButton');
-      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
-    },
-  },
-  {
     name: 'SEO Tools Centre Online Ping Website Tool',
     url: 'https://seotoolscentre.com/online-ping-website-tool',
     verified: true,
@@ -415,62 +358,6 @@ const sites = [
     },
   },
   {
-    name: 'CoderDuck Online Ping Website Tool',
-    url: 'https://www.coderduck.com/online-ping-website-tool',
-    verified: true,
-    async run(page, ctx) {
-      await ctx.type(page, '#myurl', ctx.url);
-      await ctx.type(page, '#blogNameData', ctx.keyword);
-      await ctx.type(page, '#myBlogUpdateUrlData', ctx.url);
-      await ctx.type(page, '#myBlogRSSFeedUrlData', `${ctx.url}/feed`);
-      await page.click('#checkButton');
-      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
-    },
-  },
-  {
-    name: 'CoderDuck Backlink Maker',
-    url: 'https://www.coderduck.com/backlink-maker',
-    verified: true,
-    async run(page, ctx) {
-      await ctx.type(page, '#myurl', ctx.url);
-      await page.click('#checkButton');
-      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
-    },
-  },
-  {
-    name: 'SEOToolr Backlink Maker',
-    url: 'https://www.seotoolr.com/backlink-maker',
-    verified: true,
-    async run(page, ctx) {
-      await ctx.type(page, '#myurl', ctx.url);
-      await page.click('#checkButton');
-      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
-    },
-  },
-  {
-    name: 'ToolsZoo Online Ping Website Tool',
-    url: 'https://www.toolszoo.com/online-ping-website-tool',
-    verified: true,
-    async run(page, ctx) {
-      await ctx.type(page, '#myurl', ctx.url);
-      await ctx.type(page, '#blogNameData', ctx.keyword);
-      await ctx.type(page, '#myBlogUpdateUrlData', ctx.url);
-      await ctx.type(page, '#myBlogRSSFeedUrlData', `${ctx.url}/feed`);
-      await page.click('#checkButton');
-      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
-    },
-  },
-  {
-    name: 'ToolsZoo Backlink Maker',
-    url: 'https://www.toolszoo.com/backlink-maker',
-    verified: true,
-    async run(page, ctx) {
-      await ctx.type(page, '#myurl', ctx.url);
-      await page.click('#checkButton');
-      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
-    },
-  },
-  {
     name: 'Quick Rank Tools Online Ping Website Tool',
     url: 'https://www.quickranktools.com/online-ping-website-tool',
     verified: true,
@@ -494,78 +381,12 @@ const sites = [
     },
   },
   {
-    name: 'Small-SEO-Tool.com Online Ping Website Tool',
-    url: 'https://www.small-seo-tool.com/online-ping-website-tool',
-    verified: true,
-    async run(page, ctx) {
-      await ctx.type(page, '#myurl', ctx.url);
-      await ctx.type(page, '#blogNameData', ctx.keyword);
-      await ctx.type(page, '#myBlogUpdateUrlData', ctx.url);
-      await ctx.type(page, '#myBlogRSSFeedUrlData', `${ctx.url}/feed`);
-      await page.click('#checkButton');
-      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
-    },
-  },
-  {
-    name: 'Small-SEO-Tool.com Backlink Maker',
-    url: 'https://www.small-seo-tool.com/backlink-maker',
-    verified: true,
-    async run(page, ctx) {
-      await ctx.type(page, '#myurl', ctx.url);
-      await page.click('#checkButton');
-      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
-    },
-  },
-  {
-    name: 'NimTools Backlink Maker',
-    url: 'https://nimtools.com/backlink-maker',
-    verified: true,
-    async run(page, ctx) {
-      await ctx.type(page, '#myurl', ctx.url);
-      await page.click('#checkButton');
-      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
-    },
-  },
-  {
     name: 'Digital Web Services Backlink Maker',
     url: 'https://www.digital-web-services.com/marketing-seo-tools/backlink-maker',
     verified: true,
     async run(page, ctx) {
       await ctx.type(page, '#myurl', ctx.url);
       await page.click('#checkButton');
-      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
-    },
-  },
-  {
-    name: 'SEO Magnifier Backlinks Maker',
-    url: 'https://seomagnifier.com/backlinks-maker',
-    verified: true,
-    async run(page, ctx) {
-      await ctx.type(page, '#myurl', ctx.url);
-      await page.click('#checkButton');
-      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
-    },
-  },
-  {
-    name: 'PingMyLinks SEO Tools Online Ping Website Tool',
-    url: 'https://www.pingmylinks.com/seo-tools/online-ping-website-tool',
-    verified: true,
-    async run(page, ctx) {
-      await ctx.type(page, '#myurl', ctx.url);
-      await ctx.type(page, '#blogNameData', ctx.keyword);
-      await ctx.type(page, '#myBlogUpdateUrlData', ctx.url);
-      await ctx.type(page, '#myBlogRSSFeedUrlData', `${ctx.url}/feed`);
-      await page.click('#checkButton');
-      await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
-    },
-  },
-  {
-    name: 'Bright SEO Tools Online Ping Website Tool',
-    url: 'https://brightseotools.com/online-ping-website-tool',
-    verified: true,
-    async run(page, ctx) {
-      await ctx.type(page, '#domain', ctx.url);
-      await page.click('button:has-text("Check Ping")');
       await page.waitForTimeout(ctx.settings.postSubmitWaitMs);
     },
   },
